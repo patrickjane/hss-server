@@ -52,7 +52,7 @@ def help():
     version()
 
     print("\nUsage:")
-    print("   $ ./server [OPTIONS]")
+    print("   $ ./hss_server [OPTIONS]")
     print("\nOptions:")
     print("\n   --host                  MQTT host to connect to (default: localhost)")
     print("   --port                  MQTT port (default: 1883)")
