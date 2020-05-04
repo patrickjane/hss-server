@@ -39,15 +39,14 @@ class Http:
             self.log.info("POST response to '{}'".format(self.url))
             self.log.debug("Response '{}'".format(message))
 
-            req = requests.post(self.url, data = message)
+            headers = { "Content-Type": "text/plain; charset=utf-8" }
+
+            req = requests.post(self.url, data = message.encode('utf8'), headers=headers)
         except Exception as e:
             self.log.error(
                 "Failed to POST message to url '{}' ({})".format(self.url, e))
 
         if req.status_code != 200:
-            self.log.error("Received '' from '{}' (HTTP {} / {})".format(req.status_code, req.content.decode('utf-8')[:80] if req.content else "-"))
+            self.log.error("HTTP POST failed ({})".format(req.status_code))
             return None
 
-            self.log.info("Publishing response to '{}'".format(self.tts_topic))
-            self.log.debug("Response '{}'".format(message))
-            self.client.publish(self.tts_topic, message)

@@ -54,7 +54,7 @@ class Controller:
 
         try:
             res = skill.handle(payload)
-            response = json.loads(res) if res else None
+            response = json.loads(res.decode("utf-8")) if res else None
         except Exception as e:
             msg = e.args[0] if e.args and len(e.args) else None
             self.log.error("Skill '{}' raised exception while handling intent '{}' ({})".format(
@@ -91,7 +91,7 @@ class Controller:
                 payload = {"sessionId": response["sessionId"], "siteId": response["siteId"],
                         "text": response["text"], "lang": response["lang"]}
 
-                self.mqtt.publish(json.dumps(payload))
+                self.mqtt.publish(json.dumps(payload, ensure_ascii=False).encode('utf8'))
         except Exception as e:
             self.log.error(
-                "Failed to publish response via MQTT ({})".format(e))
+                "Failed to publish response ({})".format(e))
