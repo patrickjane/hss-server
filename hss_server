@@ -1,0 +1,157 @@
+#!/usr/bin/env python
+# -----------------------------------------------------------------------------
+# HSS - Hermes Skill Server
+# Copyright (c) 2020 - Patrick Fial
+# -----------------------------------------------------------------------------
+# hss-server
+# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Imports
+# -----------------------------------------------------------------------------
+
+import logging
+import logger
+import sys
+import signal
+
+import skillserver
+
+# ------------------------------------------------------------------------------
+# globals
+# ------------------------------------------------------------------------------
+
+__version__ = "1.0.0"
+server = None
+
+# ------------------------------------------------------------------------------
+# parseArgs
+# ------------------------------------------------------------------------------
+
+
+def parseArgs():
+    def _getArg(a):
+        try:
+            res = a.split('=', 2)
+
+            if len(res) == 1:
+                return res[0].replace('--', ''), None
+
+            return res[0].replace('--', ''), res[1]
+        except Exception as e:
+            print("Failed to parse command line arguments ({})".format(e))
+            return None
+
+    return {kv[0]: kv[1] for kv in list(map(_getArg, sys.argv)) if kv != None}
+
+# ------------------------------------------------------------------------------
+# help
+# ------------------------------------------------------------------------------
+
+
+def help():
+    version()
+
+    print("\nUsage:")
+    print("   $ ./server [OPTIONS]")
+    print("\nOptions:")
+    print("\n   --host                  MQTT host to connect to (default: localhost)")
+    print("   --port                  MQTT port (default: 1883)")
+    print("   --topic                 MQTT topic to listen on (default: hermes/intent/#)")
+    print("   --tts-topic             MQTT topic to publish TTS to (default: hermes/tts/say)")
+    print("   --tts-url               URL to post TTS to. If set, TTS is not sent via MQTT (default: None)")
+    print("   --start-port            Starting port for RCP communication (default: 51000)")
+    print("\n   --console               Log to stdout instead of a dedicated logfile")
+    print("   --log-file              Log file to write log entries to (default: ./hss.log)")
+    print("   --debug                 Enable debug log output")
+    print("\n   --help                  Show this help and exit")
+    print("   --version               Show version and exit")
+    print("\n")
+
+# ------------------------------------------------------------------------------
+# version
+# ------------------------------------------------------------------------------
+
+
+def version(log=None):
+    if log:
+        log.info("Hermes Skill Server v{}".format(__version__))
+        log.info("Copyright (c) 2020-2020 Patrick Fial")
+    else:
+        print("Hermes Skill Server v{}".format(__version__))
+        print("Copyright (c) 2020-2020 Patrick Fial")
+
+# ------------------------------------------------------------------------------
+# run
+# ------------------------------------------------------------------------------
+
+
+def run():
+    global server
+
+    if 'console' in args:
+        logger.Logger.static_init(
+            None, logging.DEBUG if "debug" in args else logging.INFO)
+    else:
+        log_file = args["log-file"] if "log-file" in args else "hss.log"
+
+        logger.Logger.static_init(
+            log_file, logging.DEBUG if "debug" in args else logging.INFO)
+
+    log = logging.getLogger("hss")
+
+    version(log)
+
+    # attach default arguments
+
+    args["skills_path"] = "skills"
+
+    if not "host" in args:
+        args["host"] = "10.0.50.5"
+
+    if not "port" in args:
+        args["port"] = 1883
+
+    if not "topic" in args:
+        args["topic"] = "hermes/intent/#"
+
+    if not "tts-topic" in args:
+        args["tts-topic"] = "hermes/tts/say"
+
+    if not "start-port" in args:
+        args["start-port"] = 51000
+
+    # start skill server (blocks)
+
+    server = skillserver.SkillServer(args)
+    server.start()
+
+    # goodbye
+
+    log.info("Bye.")
+
+
+# ------------------------------------------------------------------------------
+# signal_handler
+# ------------------------------------------------------------------------------
+
+
+def signal_handler(sig, frame):
+    server.stop()
+
+# ------------------------------------------------------------------------------
+# main
+# ------------------------------------------------------------------------------
+
+
+if __name__ == "__main__":
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
+    args = parseArgs()
+
+    if args is None or "help" in args:
+        help()
+    elif args and "version" in args:
+        version()
+    else:
+        run()
