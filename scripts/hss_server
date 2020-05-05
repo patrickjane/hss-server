@@ -14,6 +14,7 @@ import sys
 import os
 import signal
 import configparser
+import pkg_resources
 
 from appdirs import user_config_dir
 
@@ -24,7 +25,11 @@ from hss_server import skillserver
 # globals
 # ------------------------------------------------------------------------------
 
-__version__ = "1.0.0"
+try:
+    __version__ = pkg_resources.require("hss_server")[0].version
+except Exception as e:
+    __version__ = "0.0.0"
+
 server = None
 skill_directory = None
 config_dir = None
@@ -82,10 +87,8 @@ def help():
 def version(log=None):
     if log:
         log.info("Hermes Skill Server v{}".format(__version__))
-        log.info("Copyright (c) 2020-2020 Patrick Fial")
     else:
         print("Hermes Skill Server v{}".format(__version__))
-        print("Copyright (c) 2020-2020 Patrick Fial")
 
 # ------------------------------------------------------------------------------
 # run
@@ -95,7 +98,7 @@ def version(log=None):
 def run():
     global server
 
-    if 'console' in args:
+    if 'log-file' not in args:
         logger.Logger.static_init(
             None, logging.DEBUG if "debug" in args else logging.INFO)
     else:

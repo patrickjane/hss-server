@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="hss_server",
-    version="0.0.3",
+    version="0.0.4",
     author="Patrick Fial",
     author_email="mg.m@gmx.net",
     description="Python-based skill server for the hermes MQTT protocol",

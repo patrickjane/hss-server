@@ -109,6 +109,7 @@ class Collection:
                 "Registering intent '{}' for skill '{}'".format(intent, skill_name))
             self.intent_map[intent] = sk
 
+        self.log.info("Skill '{}' loaded".format(skill_name))
         return True
 
     # --------------------------------------------------------------------------

@@ -17,6 +17,7 @@ import configparser
 import shutil
 import datetime
 from appdirs import user_config_dir
+import pkg_resources
 
 from git import Repo
 
@@ -24,7 +25,11 @@ from git import Repo
 # globals
 # ------------------------------------------------------------------------------
 
-__version__ = "1.0.0"
+try:
+    __version__ = pkg_resources.require("hss_server")[0].version
+except Exception as e:
+    __version__ = "0.0.0"
+
 skills_directory = None
 python_bin = None
 ignored_files = ["__init__.py", "__pycache__", ".DS_Store"]
