@@ -10,10 +10,10 @@
 
 import logging
 
-import collection
-import controller
-import mqtt
-import httptts # temporary
+from hss_server import collection
+from hss_server import controller
+from hss_server import mqtt
+from hss_server import httptts # temporary
 
 # -----------------------------------------------------------------------------
 # class SkillServer
@@ -26,14 +26,15 @@ class SkillServer:
     # ctor
     # --------------------------------------------------------------------------
 
-    def __init__(self, args):
+    def __init__(self, args, skill_directory):
         self.args = args
         self.log = logging.getLogger(__name__)
+        self.skill_directory = skill_directory
 
         # this loads the skill collection from the filesystem
 
         self.collection = collection.Collection(
-            self.args["start-port"], args["skills_path"])
+            self.args["start-port"], self.skill_directory)
 
     # --------------------------------------------------------------------------
     # start
@@ -74,5 +75,8 @@ class SkillServer:
     # --------------------------------------------------------------------------
 
     def stop(self):
-        self.mq.disconnect()
-        self.collection.exit()
+        if self.mq:
+            self.mq.disconnect()
+
+        if self.collection:
+            self.collection.exit()

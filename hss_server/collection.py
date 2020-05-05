@@ -11,7 +11,7 @@
 import logging
 import os
 
-import skill
+from hss_server import skill
 
 ignored_files = ["__init__.py", "__pycache__", ".DS_Store"]
 

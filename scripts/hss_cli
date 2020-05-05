@@ -15,6 +15,8 @@ import os
 import subprocess
 import configparser
 import shutil
+import datetime
+from appdirs import user_config_dir
 
 from git import Repo
 
@@ -77,6 +79,8 @@ def help():
     print("   $ ./hss_cli [OPTIONS]")
     print("\nOptions:")
     print(
+        "\n   --list                          List all installed skills.")
+    print(
         "\n   --install    --url=[URL]        Install a new skill using [URL]. [URL] must be a valid GIT link.")
     print(
         "   --update     (--skill=[NAME])   Update an already installed skill named [NAME].")
@@ -104,11 +108,24 @@ def run():
     global skills_directory
     global python_bin
 
-    skills_directory = os.path.join(
-        os.path.abspath(os.path.dirname(__file__)), "skills")
+    config = configparser.ConfigParser()
+    config_dir = args["config-dir"] if "config-dir" in args else user_config_dir("hss_server", "s710")
+    config_ini = os.path.join(config_dir, "config.ini") if config_dir else None
 
-    python_bin = os.path.join(
-        os.path.abspath(os.path.dirname(__file__)), "venv", "bin", "python3")
+    if not config_dir:
+        raise Exception("Unable to get configuration dir. Use --config-dir option.")
+
+    if not os.path.exists(config_ini):
+        return error("Config file '{}' does not exist. Did you set up the skill-server?".format(config_ini))
+
+    config.read(config_ini)
+
+    if not "server" in config or not "skill_directory" in config["server"]:
+        return error("Skills-directory not found in config file '{}'. Did you set up the skill-server?".format(config_ini))
+
+    skills_directory = config["server"]["skill_directory"]
+
+    python_bin = sys.executable
 
     if not python_bin or not os.path.exists(python_bin) or not os.path.isfile(python_bin):
         return error("No python3 binary found at '{}'".format(python_bin))
@@ -116,7 +133,9 @@ def run():
     if not skills_directory or not os.path.exists(skills_directory) or not os.path.isdir(skills_directory):
         return error("Invalid skills directory '{}'".format(skills_directory))
 
-    if "install" in args:
+    if "list" in args:
+        do_list()
+    elif "install" in args:
         do_install(url=args["url"] if "url" in args else None)
     elif "update" in args and "skill" in args:
         do_update_one(name=args["skill"])
@@ -126,6 +145,39 @@ def run():
         do_uninstall(name=args["skill"] if "skill" in args else None)
     else:
         help()
+
+# ------------------------------------------------------------------------------
+# do_list
+# ------------------------------------------------------------------------------
+
+
+def do_list():
+    print("--------------------------------------------------------------------------------")
+    print("{0: <35} {1: <8} {2: <7} {3: <20} {4: <1}".format("Skill", "Version", "Commit", "Date", "Config"))
+    print("--------------------------------------------------------------------------------")
+
+    for skill_name in os.listdir(skills_directory):
+        if skill_name not in ignored_files:
+            skill_directory = os.path.join(skills_directory, skill_name)
+            config_ini = os.path.join(skill_directory, "config.ini")
+            version_file = os.path.join(skill_directory, "version")
+            repo = Repo(skill_directory)
+            version = "-"
+
+            cfg = "y" if os.path.exists(config_ini) else "n"
+
+            if os.path.exists(version_file) and os.path.isfile(version_file):
+                with open(version_file, 'r') as file:
+                    version = file.read().replace("\n", "")
+
+            try:
+                headcommit = repo.head.commit
+                commit = headcommit.hexsha[:7]
+                dt = datetime.datetime.utcfromtimestamp(headcommit.committed_date).strftime("%m/%d/%Y, %H:%M:%S")
+
+                print("{0: <35} {1: <8} {2: <7} {3: <20} {4: <1}".format(skill_name, version, commit, dt, cfg))
+            except Exception as e:
+                pass
 
 # ------------------------------------------------------------------------------
 # do_install
@@ -163,12 +215,12 @@ def do_install(url):
 
     print("Creating venv ...")
 
-    subprocess.run([python_bin, "-m", "venv", venv_directory])
+    subprocess.run([python_bin, "-m", "venv", venv_directory], cwd=skill_directory)
 
     print("Installing dependencies ...")
 
     subprocess.run([venv_python, "-m", "pip",
-                    "install", "-r", "requirements.txt"])
+                    "install", "-r", "requirements.txt"], cwd=skill_directory)
 
     # finally, check if there is a config.ini.default. if so,
     # it should be copied to config.ini, and empty parameters should be queried
@@ -239,6 +291,7 @@ def do_update_one(name):
     skill_directory = os.path.join(skills_directory, name)
     config_ini = os.path.join(skill_directory, "config.ini")
     config_ini_default = os.path.join(skill_directory, "config.ini.default")
+    old_headcommit = None
 
     if not os.path.exists(skill_directory) or not os.path.isdir(skill_directory):
         return error("Unknown/invalid skill '{}' given: '{}' is not a valid skill directory".format(name, skill_directory))
@@ -257,10 +310,14 @@ def do_update_one(name):
 
     try:
         repo = Repo(skill_directory)
+        old_headcommit = repo.head.commit
+
         origin = repo.remotes['origin']
         origin.pull()
     except Exception as e:
         return error("Failed to pull changes from git ({})".format(e))
+
+    new_headcommit = repo.head.commit
 
     # now evaluate the (potentially changed) config.ini.default and get the delta
     # prompt for new unknown values
@@ -287,7 +344,12 @@ def do_update_one(name):
         with open(config_ini, 'w') as file:
             config.write(file)
 
-    print("\nSkill '{}' successfully updated.\n".format(name))
+    if new_headcommit and old_headcommit and new_headcommit != old_headcommit:
+        print("\nSkill '{}' successfully updated.\n".format(name))
+        return True
+
+    print("\nNo update for skill '{}' available.\n".format(name))
+    return False
 
 
 # ------------------------------------------------------------------------------
@@ -295,6 +357,9 @@ def do_update_one(name):
 # ------------------------------------------------------------------------------
 
 def do_update_all():
+    n_updates = 0
+    n_nones = 0
+
     cont = input("Updating ALL skills. Continue? (YES|no) ")
 
     if cont and cont is not "YES" and cont is not "yes":
@@ -302,9 +367,12 @@ def do_update_all():
 
     for filename in os.listdir(skills_directory):
         if filename not in ignored_files:
-            do_update_one(filename)
+            if do_update_one(filename):
+                n_updates = n_updates + 1
+            else:
+                n_nones = n_nones + 1
 
-    print("All skills updated.")
+    print("{} Skills updated, {} skills without update".format(n_updates, n_nones))
 
 # ------------------------------------------------------------------------------
 # main
