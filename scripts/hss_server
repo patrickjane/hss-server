@@ -171,6 +171,7 @@ def init_config():
 
     if not os.path.exists(config_dir):
         os.makedirs(config_dir, exist_ok=True)
+        os.makedirs(skill_directory, exist_ok=True)
 
     # if ~/.config/hss_server/config.ini exists, load it
 
@@ -181,6 +182,9 @@ def init_config():
     # use the default & save it back to the config file
 
     if not "server" in config or not "skill_directory" in config["server"]:
+        if not "server" in config:
+            config.add_section("server")
+
         config["server"]["skill_directory"] = skill_directory
 
         with open(config_ini, 'w') as file:
