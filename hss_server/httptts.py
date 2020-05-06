@@ -44,10 +44,11 @@ class Http:
             headers = {"Content-Type": "text/plain; charset=utf-8"}
 
             req = requests.post(self.url, params={"language": language}, data=message.encode('utf8'), headers=headers)
+
+            if req.status_code != 200:
+                self.log.error("HTTP POST failed ({})".format(req.status_code))
+                return None
         except Exception as e:
             self.log.error(
                 "Failed to POST message to url '{}' ({})".format(self.url, e))
 
-        if req.status_code != 200:
-            self.log.error("HTTP POST failed ({})".format(req.status_code))
-            return None
