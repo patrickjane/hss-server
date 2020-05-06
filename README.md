@@ -3,7 +3,7 @@
 Intent handling based on modular skills written in python. Intents are supplied from the voice assistant via Hermes MQTT protocol.
 
 ```
-Voice Assistant   <=== mqtt ===>   hss_server   <===>   hss_skill
+Voice Assistant   <=== mqtt ===>   hss-server   <===>   hss-skill
 ```
 
 Compatible with the [Rhasspy voice assistant](https://github.com/synesthesiam/rhasspy).
@@ -26,7 +26,7 @@ The server is preferably installed within a virtualenv, and requires python >=3.
 Afterwards the server can be run:
 
 ```
-(venv) /home/s710/hss $> hss_server
+(venv) /home/s710/hss $> hss-server
 INFO:hss: Hermes Skill Server v1.0.0
 INFO:hss: Using config dir '/home/s710/.config/hss_server'
 INFO:hss: Loading skills from '/home/s710/.config/skills'
@@ -40,7 +40,7 @@ INFO:hss_server.mqtt: Publishing TTS to topic 'hermes/tts/say'
 INFO:hss_server.mqtt: Subscribing to topic 'hermes/intent/#' ...
 ```
 
-After the initial start, `hss_server` creates its configuration file (`[USER_CONFIG_DIR]/hss_server/config.ini`). The config file will contain the location where skills are installed, which by default is `[USER_CONFIG_DIR]/hss_server/skills`.
+After the initial start, `hss-server` creates its configuration file (`[USER_CONFIG_DIR]/hss_server/config.ini`). The config file will contain the location where skills are installed, which by default is `[USER_CONFIG_DIR]/hss_server/skills`.
 
 On Linux, the `USER_CONFIG_DIR` will be `~/.config`, on MacOS it will be `~/Library/Application Support`.
 
@@ -62,14 +62,14 @@ Also, all available skills from the skills directory will be loaded, each skill 
 
 For every incoming intent which is published via MQTT, the skill-server tries to find a matching skill, and, if found, hands the intent over to the skill so it can be handled. If the skill implements a response text, then this text will be returned via MQTT to the TTS topic (by default: `hermes/tts/say`).
 
-Each skill is running in its own python virtualenv, with its own python dependencies and configuration. Skills can be installed easily from a git repository using the `hss_cli` tool.
+Each skill is running in its own python virtualenv, with its own python dependencies and configuration. Skills can be installed easily from a git repository using the `hss-cli` tool.
 
 
 ## Options
 
 ```
 Usage:
-   $ ./hss_server [OPTIONS]
+   $ ./hss-server [OPTIONS]
 
 Options:
 
@@ -97,7 +97,7 @@ The `--start-port` option denotes the beginning of the dynamic RPC port range, a
 
 # CLI
 
-The `hss_cli` tool is used to: 
+The `hss-cli` tool is used to: 
 
 - list all installed skills
 - install a skill
@@ -108,7 +108,7 @@ The `hss_cli` tool is used to:
 
 ```
 Usage:
-   $ ./hss_cli [OPTIONS]
+   $ ./hss-cli [OPTIONS]
 
 Options:
 
@@ -141,7 +141,7 @@ The server must be restarted after installing a new skill.
 
 Updating one or more skills is as easy as pulling changes from the remote GIT repository of the skill.
 
-In addition, `hss_cli` will compare the existing `config.ini` (if it exists) with a new `config.ini.default`, to detect newly added configuration parameters, and then prompt the user for the parameters.
+In addition, `hss-cli` will compare the existing `config.ini` (if it exists) with a new `config.ini.default`, to detect newly added configuration parameters, and then prompt the user for the parameters.
 
 ### Uninstalling
 
