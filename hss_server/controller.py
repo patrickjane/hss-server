@@ -86,7 +86,7 @@ class Controller:
             if self.http:
                 # via http / rhasspy API (temporary until rhasspy supports TTS via hermes)
 
-                self.http.post(response["text"])
+                self.http.post(response["text"], response["lang"])
             else:
                 payload = {"sessionId": response["sessionId"], "siteId": response["siteId"],
                         "text": response["text"], "lang": response["lang"]}

@@ -34,14 +34,16 @@ class Http:
     # post
     # --------------------------------------------------------------------------
 
-    def post(self, message):
+    def post(self, message, lang):
         try:
+            language = lang.replace("_", "-")
+
             self.log.info("POST response to '{}'".format(self.url))
-            self.log.debug("Response '{}'".format(message))
+            self.log.debug("Response '{}' language '{}'".format(message, language))
 
-            headers = { "Content-Type": "text/plain; charset=utf-8" }
+            headers = {"Content-Type": "text/plain; charset=utf-8"}
 
-            req = requests.post(self.url, data = message.encode('utf8'), headers=headers)
+            req = requests.post(self.url, params={"language": language}, data=message.encode('utf8'), headers=headers)
         except Exception as e:
             self.log.error(
                 "Failed to POST message to url '{}' ({})".format(self.url, e))
@@ -49,4 +51,3 @@ class Http:
         if req.status_code != 200:
             self.log.error("HTTP POST failed ({})".format(req.status_code))
             return None
-

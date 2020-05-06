@@ -291,8 +291,11 @@ def do_update_one(name):
         return error("Skill name must be given in order to uninstall a skill")
 
     skill_directory = os.path.join(skills_directory, name)
+    venv_directory = os.path.join(skill_directory, "venv")
     config_ini = os.path.join(skill_directory, "config.ini")
     config_ini_default = os.path.join(skill_directory, "config.ini.default")
+    venv_python = os.path.join(venv_directory, "bin", "python3")
+
     old_headcommit = None
 
     if not os.path.exists(skill_directory) or not os.path.isdir(skill_directory):
@@ -320,6 +323,12 @@ def do_update_one(name):
         return error("Failed to pull changes from git ({})".format(e))
 
     new_headcommit = repo.head.commit
+
+    if new_headcommit and old_headcommit and new_headcommit != old_headcommit:
+        print("Installing/updating dependencies ...")
+
+        subprocess.run([venv_python, "-m", "pip",
+                        "install", "-r", "requirements.txt"], cwd=skill_directory)
 
     # now evaluate the (potentially changed) config.ini.default and get the delta
     # prompt for new unknown values
