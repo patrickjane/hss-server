@@ -69,35 +69,37 @@ Each skill is running in its own python virtualenv, with its own python dependen
 
 ```
 Usage:
-   $ ./hss-server [OPTIONS]
+   $ ./hss-server [-dhv][-hptTurcl arg]
 
 Options:
 
-   --host=[HOST]           MQTT host to connect to (default: localhost)
-   --port=[PORT]           MQTT port (default: 1883)
-   --topic=[TOPIC]         MQTT topic to listen on (default: hermes/intent/#)
-   --tts-topic=[TOPIC]     MQTT topic to publish TTS to (default: hermes/tts/say)
-   --tts-url=[URL]         URL to post TTS to. If set, TTS is not sent via MQTT (default: None)
-   --start-port=[PORT]     Starting port for RCP communication (default: 51000)
+   -h [host]          MQTT host to connect to (default: localhost)
+   -p [port]          MQTT port (default: 1883)
+   -t [topic]         MQTT topic to listen on (default: hermes/intent/#)
 
-   --config-dir=[DIR]      Location where the server's config.ini is located (default: user config dir)
+   -T [topic]         MQTT topic to publish TTS to (default: hermes/tts/say)
+   -u [url]           URL to post TTS to. If set, TTS is not sent via MQTT (default: None)
 
-   --log-file=[FILE]       Log file to write log entries to (default: console)
-   --debug                 Enable debug log output
+   -r [port]          Starting port for RCP communication (default: 51000)
 
-   --help                  Show this help and exit
-   --version               Show version and exit
+   -c [dir]           Directory path where the server's config.ini is located (default: user config dir)
+
+   -l [file]          Log file to write log entries to (default: console)
+   -d                 Enable debug log output
+
+   --help             Show this help and exit
+   -v, --version      Show version and exit
 ```
 
-The options `host`/`port`/`topic`/`tts-topic` are needed for MQTT communication with the voice assistant.
+The options `-h`/`-p`/`-t`/`-T` are needed for MQTT communication with the voice assistant.
 
-The option `--tts-url` switches the text-to-speech output from MQTT to HTTP, in case the voice assistant does not support MQTT-based TTS messages. For rhasspy <= 2.4, this should be set to `http://[RHASSPYHOST]:12101/api/text-to-speech`.
+The option `-u` switches the text-to-speech output from MQTT to HTTP, in case the voice assistant does not support MQTT-based TTS messages. For rhasspy <= 2.4, this should be set to `http://[RHASSPYHOST]:12101/api/text-to-speech`.
 
-The `--start-port` option denotes the beginning of the dynamic RPC port range, and should not be changed unless there are issues with other services.
+The `-r` option denotes the beginning of the dynamic RPC port range, and should not be changed unless there are issues with other services.
 
 # CLI
 
-The `hss-cli` tool is used to: 
+The `hss-cli` tool is used to:
 
 - list all installed skills
 - install a skill
@@ -108,20 +110,20 @@ The `hss-cli` tool is used to:
 
 ```
 Usage:
-   $ ./hss-cli [OPTIONS]
+   $ ./hss-cli [-lhv][-iur arg]
 
 Options:
 
-   --list                          List all installed skills
+   -l              List all installed skills.
 
-   --install    --url=[URL]        Install a new skill using [URL]. [URL] must be a valid GIT link.
-   --update     (--skill=[NAME])   Update an already installed skill named [NAME].
-                                   If skill is ommited, ALL skills will be updated.
+   -i [url]        Install a new skill using [url]. [url] must be a valid GIT link.
+   -u ([name])     Update an already installed skill named [name].
+                   If [name] is ommited, ALL skills will be updated.
 
-   --uninstall  --skill=[NAME]     Uninstall an already installed skill named [NAME]
+   -r [name]       Uninstall an already installed skill named [name]
 
-   --help                          Show this help and exit
-   --version                       Show version and exit
+   -h, --help      Show this help and exit
+   -v, --version   Show version and exit
 ```
 
 ### Installing

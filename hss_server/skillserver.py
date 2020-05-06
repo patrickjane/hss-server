@@ -30,11 +30,12 @@ class SkillServer:
         self.args = args
         self.log = logging.getLogger(__name__)
         self.skill_directory = skill_directory
+        self.http = None
 
         # this loads the skill collection from the filesystem
 
         self.collection = collection.Collection(
-            self.args["start-port"], self.skill_directory)
+            self.args["r"], self.skill_directory)
 
     # --------------------------------------------------------------------------
     # start
@@ -53,12 +54,14 @@ class SkillServer:
 
         # setup MQTT
 
+        if "u" in self.args:
+            self.log.info("Sending TTS response to '{}'".format(self.args["u"]))
+            self.http = httptts.Http(self.args["u"])
+
         self.log.info("Connecting to MQTT server ...")
 
-        self.http = httptts.Http(self.args["tts-url"]) if "tts-url" in self.args else None
-
-        self.mq = mqtt.Mqtt(self.args["host"], self.args["port"],
-                            self.args["topic"], self.args["tts-topic"],
+        self.mq = mqtt.Mqtt(self.args["h"], self.args["p"],
+                            self.args["t"], self.args["T"] if not self.http else None,
                             None, None)
 
         # initialize the controller. it needs the collection + mqtt

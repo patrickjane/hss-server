@@ -58,19 +58,18 @@ def error(message):
 
 
 def parseArgs():
-    def _getArg(a):
-        try:
-            res = a.split('=', 2)
+    res = {}
 
-            if len(res) == 1:
-                return res[0].replace('--', ''), None
+    for i in range(len(sys.argv)):
+        arg = sys.argv[i]
 
-            return res[0].replace('--', ''), res[1]
-        except Exception as e:
-            print("Failed to parse command line arguments ({})".format(e))
-            return None
+        if arg.startswith("--") or arg.startswith("-"):
+            if i+1 < len(sys.argv) and not sys.argv[i+1].startswith("-"):
+                res[arg.replace("-", "")] = sys.argv[i+1]
+            else:
+                res[arg.replace("-", "")] = None
 
-    return {kv[0]: kv[1] for kv in list(map(_getArg, sys.argv)) if kv != None}
+    return res
 
 # ------------------------------------------------------------------------------
 # help
@@ -81,19 +80,19 @@ def help():
     version()
 
     print("\nUsage:")
-    print("   $ ./hss_cli [OPTIONS]")
+    print("   $ ./hss-cli [-lhv][-iur arg]")
     print("\nOptions:")
     print(
-        "\n   --list                          List all installed skills.")
+        "\n   -l              List all installed skills.")
     print(
-        "\n   --install    --url=[URL]        Install a new skill using [URL]. [URL] must be a valid GIT link.")
+        "\n   -i [url]        Install a new skill using [url]. [url] must be a valid GIT link.")
     print(
-        "   --update     (--skill=[NAME])   Update an already installed skill named [NAME].")
-    print("                                   If skill is ommited, ALL skills will be updated.")
+        "   -u ([name])     Update an already installed skill named [name].")
+    print("                   If [name] is ommited, ALL skills will be updated.")
     print(
-        "\n   --uninstall  --skill=[NAME]     Uninstall an already installed skill named [NAME]")
-    print("\n   --help                          Show this help and exit")
-    print("   --version                       Show version and exit")
+        "\n   -r [name]       Uninstall an already installed skill named [name]")
+    print("\n   -h, --help      Show this help and exit")
+    print("   -v, --version   Show version and exit")
     print("\n")
 
 # ------------------------------------------------------------------------------
@@ -138,16 +137,14 @@ def run():
     if not skills_directory or not os.path.exists(skills_directory) or not os.path.isdir(skills_directory):
         return error("Invalid skills directory '{}'".format(skills_directory))
 
-    if "list" in args:
+    if "list" in args or "l" in args:
         do_list()
-    elif "install" in args:
-        do_install(url=args["url"] if "url" in args else None)
-    elif "update" in args and "skill" in args:
-        do_update_one(name=args["skill"])
-    elif "update" in args:
-        do_update_all()
-    elif "uninstall" in args:
-        do_uninstall(name=args["skill"] if "skill" in args else None)
+    elif "install" in args or "i" in args:
+        do_install(url=args["install"] if "install" in args else args["i"])
+    elif "update" in args or "u" in args:
+        do_update_all(name=args["update"] if "update" in args else args["u"])
+    elif "uninstall" in args or "r" in args:
+        do_uninstall(name=args["uninstall"] if "uninstall" in args else args["r"])
     else:
         help()
 
@@ -361,7 +358,10 @@ def do_update_one(name):
 # do_update_all
 # ------------------------------------------------------------------------------
 
-def do_update_all():
+def do_update_all(name):
+    if name:
+        return do_update_one(name)
+
     n_updates = 0
     n_nones = 0
 
@@ -387,9 +387,9 @@ def do_update_all():
 if __name__ == "__main__":
     args = parseArgs()
 
-    if args is None or "help" in args:
+    if args is None or "help" in args or "h" in args:
         help()
-    elif args and "version" in args:
+    elif "version" in args or "v" in args:
         version()
     else:
         run()

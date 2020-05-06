@@ -40,19 +40,18 @@ config_dir = None
 
 
 def parseArgs():
-    def _getArg(a):
-        try:
-            res = a.split('=', 2)
+    res = {}
 
-            if len(res) == 1:
-                return res[0].replace('--', ''), None
+    for i in range(len(sys.argv)):
+        arg = sys.argv[i]
 
-            return res[0].replace('--', ''), res[1]
-        except Exception as e:
-            print("Failed to parse command line arguments ({})".format(e))
-            return None
+        if arg.startswith("--") or arg.startswith("-"):
+            if i+1 < len(sys.argv) and not sys.argv[i+1].startswith("-"):
+                res[arg.replace("-", "")] = sys.argv[i+1]
+            else:
+                res[arg.replace("-", "")] = None
 
-    return {kv[0]: kv[1] for kv in list(map(_getArg, sys.argv)) if kv != None}
+    return res
 
 # ------------------------------------------------------------------------------
 # help
@@ -63,19 +62,19 @@ def help():
     version()
 
     print("\nUsage:")
-    print("   $ ./hss_server [OPTIONS]")
+    print("   $ ./hss-server [-dhv][-hptTurcl arg]")
     print("\nOptions:")
-    print("\n   --host=[HOST]           MQTT host to connect to (default: localhost)")
-    print("   --port=[PORT]           MQTT port (default: 1883)")
-    print("   --topic=[TOPIC]         MQTT topic to listen on (default: hermes/intent/#)")
-    print("   --tts-topic=[TOPIC]     MQTT topic to publish TTS to (default: hermes/tts/say)")
-    print("   --tts-url=[URL]         URL to post TTS to. If set, TTS is not sent via MQTT (default: None)")
-    print("   --start-port=[PORT]     Starting port for RCP communication (default: 51000)")
-    print("\n   --config-dir=[DIR]      Location where the server's config.ini is located (default: user config dir)")
-    print("   --log-file=[FILE]       Log file to write log entries to (default: console)")
-    print("   --debug                 Enable debug log output")
-    print("\n   --help                  Show this help and exit")
-    print("   --version               Show version and exit")
+    print("\n   -h [host]          MQTT host to connect to (default: localhost)")
+    print("   -p [port]          MQTT port (default: 1883)")
+    print("   -t [topic]         MQTT topic to listen on (default: hermes/intent/#)")
+    print("\n   -T [topic]         MQTT topic to publish TTS to (default: hermes/tts/say)")
+    print("   -u [url]           URL to post TTS to. If set, TTS is not sent via MQTT (default: None)")
+    print("\n   -r [port]          Starting port for RCP communication (default: 51000)")
+    print("\n   -c [dir]           Directory path where the server's config.ini is located (default: user config dir)")
+    print("\n   -l [file]          Log file to write log entries to (default: console)")
+    print("   -d                 Enable debug log output")
+    print("\n   --help         Show this help and exit")
+    print("   -v, --version      Show version and exit")
     print("\n")
 
 # ------------------------------------------------------------------------------
@@ -97,14 +96,12 @@ def version(log=None):
 def run():
     global server
 
-    if 'log-file' not in args:
+    if 'l' not in args:
         logger.Logger.static_init(
-            None, logging.DEBUG if "debug" in args else logging.INFO)
+            None, logging.DEBUG if "d" in args else logging.INFO)
     else:
-        log_file = args["log-file"] if "log-file" in args else "hss.log"
-
         logger.Logger.static_init(
-            log_file, logging.DEBUG if "debug" in args else logging.INFO)
+            args["l"], logging.DEBUG if "d" in args else logging.INFO)
 
     log = logging.getLogger("hss")
 
@@ -115,20 +112,22 @@ def run():
 
     # attach default arguments
 
-    if not "host" in args:
-        args["host"] = "10.0.50.5"
+    if not "h" in args:
+        args["h"] = "localhost"
 
-    if not "port" in args:
-        args["port"] = 1883
+    if not "p" in args:
+        args["p"] = 1883
+    else:
+        args["p"] = int(args["p"])
 
-    if not "topic" in args:
-        args["topic"] = "hermes/intent/#"
+    if not "t" in args:
+        args["t"] = "hermes/intent/#"
 
-    if not "tts-topic" in args:
-        args["tts-topic"] = "hermes/tts/say"
+    if not "T" in args:
+        args["T"] = "hermes/tts/say"
 
-    if not "start-port" in args:
-        args["start-port"] = 51000
+    if not "r" in args:
+        args["r"] = 51000
 
     # start skill server (blocks)
 
@@ -158,14 +157,14 @@ def init_config():
     global config_dir
 
     config = configparser.ConfigParser()
-    config_dir = args["config-dir"] if "config-dir" in args else user_config_dir("hss_server", "s710")
+    config_dir = args["c"] if "c" in args else user_config_dir("hss_server", "s710")
     config_ini = os.path.join(config_dir, "config.ini")
     skill_directory = os.path.join(config_dir, "skills")
 
     # bail out of anything is weird
 
     if not config_dir:
-        raise Exception("Unable to get configuration dir. Use --config-dir option.")
+        raise Exception("Unable to get configuration dir. Use -c option.")
 
     # create config dir if it does not yet exist (~/.config/hss_server)
 
@@ -210,7 +209,7 @@ if __name__ == "__main__":
 
     if args is None or "help" in args:
         help()
-    elif args and "version" in args:
+    elif "version" in args or "v" in args:
         version()
     else:
         run()
