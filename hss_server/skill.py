@@ -13,7 +13,7 @@ import logging
 import subprocess
 import time
 
-import rpyc
+from hss_server import rpc
 
 # -----------------------------------------------------------------------------
 # class Skill (wrapper for loaded skills)
@@ -26,12 +26,13 @@ class Skill:
     # ctor
     # --------------------------------------------------------------------------
 
-    def __init__(self, skill_name, filename, skills_directory, port):
+    def __init__(self, skill_name, filename, skills_directory, port, parent_port):
         self.log = logging.getLogger("skill-" + skill_name)
         self.port = port
+        self.parent_port = parent_port
         self.name = skill_name
         self.filename = filename
-        self.rpc_client = None
+        self.rpc_client = rpc.RpcClient(port)
 
         self.python_bin = os.path.join(
             skills_directory, filename, "venv", "bin", "python")
@@ -41,10 +42,13 @@ class Skill:
     # init
     # --------------------------------------------------------------------------
 
-    def init(self):
+    async def init(self):
         try:
             self.child_process = subprocess.Popen(
-                [self.python_bin, self.script_file, "--skill-name=" + self.name, "--port="+str(self.port)])
+                [self.python_bin, self.script_file,
+                    "--skill-name=" + self.name,
+                    "--port="+str(self.port),
+                    "--parent-port="+str(self.parent_port)])
         except Exception as e:
             self.log.error("Failed to start skill ({})".format(e))
 
@@ -52,10 +56,9 @@ class Skill:
 
         # try to connect to skill's RPC-server max 5 seconds (w/ 100ms pause)
 
-        while not self.rpc_client:
+        while True:
             try:
-                cl = rpyc.connect("localhost", self.port)
-                self.rpc_client = cl
+                await self.rpc_client.connect()
                 break
             except Exception as e:
                 tries = tries+1
@@ -63,27 +66,22 @@ class Skill:
             if tries > 50:
                 self.log.error(
                     "Failed to start skill for more than 5 seconds, giving up")
-                break
+                self.log.error("Failed to connect to RPC port of skill")
+                return False
 
             time.sleep(0.1)
 
-        if not self.rpc_client:
-            self.log.error("Failed to start skill")
-            self.disconnect()
-            return False
-
-        self.my_intents = self.rpc_client.root.get_intentlist()
-
+        self.my_intents = await self.rpc_client.execute("get_intentlist")
         return True
 
     # --------------------------------------------------------------------------
-    # exit
+    # exit (async)
     # --------------------------------------------------------------------------
 
-    def exit(self, kill=False):
+    async def exit(self, kill=False):
         if self.rpc_client:
             try:
-                self.rpc_client.disconnect()
+                await self.rpc_client.disconnect()
             except:
                 pass
 
@@ -99,11 +97,11 @@ class Skill:
     # handle
     # --------------------------------------------------------------------------
 
-    def handle(self, request):
-        return self.rpc_client.root.handle(request)
+    async def handle(self, request):
+        return await self.rpc_client.execute("handle", request)
 
     # --------------------------------------------------------------------------
-    # get_intentlist (static)
+    # get_intentlist
     # --------------------------------------------------------------------------
 
     def get_intentlist(self):

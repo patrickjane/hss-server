@@ -13,7 +13,10 @@ import logging
 from hss_server import collection
 from hss_server import controller
 from hss_server import mqtt
+from hss_server import rpc
 from hss_server import httptts # temporary
+
+import asyncio
 
 # -----------------------------------------------------------------------------
 # class SkillServer
@@ -26,60 +29,94 @@ class SkillServer:
     # ctor
     # --------------------------------------------------------------------------
 
-    def __init__(self, args, skill_directory):
-        self.args = args
+    def __init__(self, cfg):
+        self.cfg = cfg
         self.log = logging.getLogger(__name__)
-        self.skill_directory = skill_directory
         self.http = None
-
-        # this loads the skill collection from the filesystem
-
+        self.rpc_start_port = self.cfg["rpc_start_port"]
+        self.rpc_server = None
+        self.rpc_server_task = None
+        self.mq = None
         self.collection = collection.Collection(
-            self.args["r"], self.skill_directory)
+            self.rpc_start_port,
+            self.rpc_start_port + 1,    # hss-server is having its own rpc port
+            self.cfg["skill_directory"])
 
     # --------------------------------------------------------------------------
     # start
     # --------------------------------------------------------------------------
 
-    def start(self):
-        self.log.info("Loading skills ...")
+    async def start(self):
 
-        # this spawns skills (child-processes) and connects them via RPC
+        # setup rhasspy 2.4 compatibility TTS via HTTP
 
-        res = self.collection.init()
-
-        if res is not True:
-            self.log.error("Init failed")
-            return res
+        if self.cfg["tts_url"]:
+            self.log.info("Sending TTS response to '{}'".format(self.cfg["tts_url"]))
+            self.http = httptts.Http(self.cfg["tts_url"])
 
         # setup MQTT
 
-        if "u" in self.args:
-            self.log.info("Sending TTS response to '{}'".format(self.args["u"]))
-            self.http = httptts.Http(self.args["u"])
-
-        self.log.info("Connecting to MQTT server ...")
-
-        self.mq = mqtt.Mqtt(self.args["h"], self.args["p"],
-                            self.args["t"], self.args["T"] if not self.http else None,
-                            None, None)
+        self.mq = mqtt.Mqtt(self.cfg["mqtt_server"],
+                            self.cfg["mqtt_port"],
+                            self.cfg["mqtt_user"],
+                            self.cfg["mqtt_password"],
+                            self.cfg["intents_topic"],
+                            self.cfg["start_session_topic"],
+                            self.cfg["continue_session_topic"],
+                            self.cfg["end_session_topic"])
 
         # initialize the controller. it needs the collection + mqtt
 
         self.controller = controller.Controller(self.collection, self.mq, self.http)
         self.mq.controller = self.controller
 
+        # start the RPC server (communication skill -> server)
+
+        self.log.info("Starting RPC server ...")
+
+        self.rpc_server = rpc.RpcServer(self.rpc_start_port, self.controller)
+
+        loop = asyncio.get_event_loop()
+
+        self.rpc_server_task = loop.create_task(self.rpc_server.start())
+
+        # load/initialize collection of skills
+        # this spawns skills (child-processes) and connects them via RPC
+
+        self.log.info("Loading skills ...")
+
+        res = await self.collection.init()
+
+        if res is not True:
+            self.log.error("Init failed")
+            return res
+
         # start the MQTT listener, this will BLOCK until we disconnect & exit
 
-        self.mq.connect()
+        self.log.info("Connecting to MQTT server ...")
+
+        try:
+            await self.mq.connect()
+        except Exception as e:
+            pass
 
     # --------------------------------------------------------------------------
-    # stop
+    # stop (async)
     # --------------------------------------------------------------------------
 
-    def stop(self):
-        if self.mq:
-            self.mq.disconnect()
-
+    async def stop(self, loop):
         if self.collection:
-            self.collection.exit()
+            await self.collection.exit()
+
+        if self.rpc_server_task:
+            self.log.info("Shutting down RPC server ...")
+            self.rpc_server_task.cancel()
+
+            try:
+                await self.rpc_server_task
+            except asyncio.CancelledError as e:
+                pass
+
+        if self.mq:
+            await self.mq.disconnect()
+

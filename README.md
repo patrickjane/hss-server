@@ -6,13 +6,30 @@ Intent handling based on modular skills written in python. Intents are supplied 
 Voice Assistant   <=== mqtt ===>   hss-server   <===>   hss-skill
 ```
 
+```
+(hss) hss@ceres:/srv/hss $ hss-server
+INFO:hss: Hermes Skill Server v0.3.0
+INFO:hss: Using config directory: '/home/hss/.config/hss_server'
+INFO:hss: Using skills directory: '/home/hss/.config/hss_server/skills'
+INFO:hss_server.skillserver: Sending TTS response to 'http://calypso.universe:12101/api/text-to-speech'
+INFO:hss_server.skillserver: Starting RPC server ...
+INFO:hss_server.skillserver: Loading skills ...
+INFO:hss_server.collection: Skill 'hss-s710-weather' loaded
+INFO:hss_server.collection: Skill 'hss-s710-lightsha' loaded
+INFO:hss_server.collection: Loaded 2 skills
+INFO:hss_server.skillserver: Connecting to MQTT server ...
+INFO:hss_server.mqtt: Connecting to MQTT server ...
+INFO:hss_server.mqtt: Connecting to mqtt://ceres.universe:1883 ...
+INFO:hss_server.mqtt: Subscribing to hermes/intent/# ...
+```
+
 Compatible with the [Rhasspy voice assistant](https://github.com/synesthesiam/rhasspy).
 
 ## Installation
 
-The server is preferably installed within a virtualenv, and requires python >=3.6. 
+The server is preferably installed within a virtualenv, and requires python >=3.7. 
 
-#### Default user
+#### Default user (venv)
 
 ```
 /home/s710 $> mkdir hss
@@ -25,24 +42,7 @@ The server is preferably installed within a virtualenv, and requires python >=3.
 
 ```
 
-Afterwards the server can be run:
-
-```
-(venv) /home/s710/hss $> hss-server
-INFO:hss: Hermes Skill Server v1.0.0
-INFO:hss: Using config dir '/home/s710/.config/hss_server'
-INFO:hss: Loading skills from '/home/s710/.config/skills'
-INFO:hss_server.skillserver: Loading skills ...
-INFO:hss_server.collection: Initializing skills ...
-INFO:hss_server.collection: Skill 'hss-skill-s710-weather' loaded
-INFO:hss_server.collection: Loaded 1 skill
-INFO:hss_server.skillserver: Connecting to MQTT server ...
-INFO:hss_server.mqtt: Connected to 10.0.50.5:1883
-INFO:hss_server.mqtt: Publishing TTS to topic 'hermes/tts/say'
-INFO:hss_server.mqtt: Subscribing to topic 'hermes/intent/#' ...
-```
-
-#### Own user
+#### Own user (venv)
 
 It is also advised to have it run under a dedicated user. To do so, follow those steps, for a used named "hss" to be created and used:
 
@@ -52,72 +52,75 @@ pi@ceres:/srv $ mkdir hss
 pi@ceres:/srv $ sudo mkdir hss
 pi@ceres:/srv $ sudo chown hss:hss hss
 pi@ceres:/srv $ sudo -u hss -H -s
-hss@ceres:/srv $ python3 -m venv .
-hss@ceres:/srv $ source bin/activate
-hss@ceres:/srv $ python3 -m pip install pip --upgrade     # optional: update pip 
-hss@ceres:/srv $ pip install hss-server
-```
-
-Then run the server:
-
-```
-(hss) hss@ceres:/srv/hss $ hss-server
-INFO:hss: Hermes Skill Server v0.2.2
-INFO:hss: Using config dir '/home/hss/.config/hss_server'
-INFO:hss: Loading skills from '/home/hss/.config/hss_server/skills'
-INFO:hss_server.skillserver: Loading skills ...
-INFO:hss_server.collection: Initializing skills ...
-INFO:hss_server.collection: Loaded 0 skills
-INFO:hss_server.skillserver: Connecting to MQTT server ...
-INFO:hss_server.mqtt: Connected to localhost:1883
-INFO:hss_server.mqtt: Publishing TTS to topic 'hermes/tts/say'
-INFO:hss_server.mqtt: Subscribing to topic 'hermes/intent/#' ...
+hss@ceres:/srv $ cd hss
+hss@ceres:/srv/hss $ python3 -m venv .
+hss@ceres:/srv/hss $ source bin/activate
+(venv) hss@ceres:/srv/hss $ python3 -m pip install pip --upgrade     # optional: update pip 
+(venv) hss@ceres:/srv/hss $ pip install hss-server
 ```
 
 
 #### Configuration directory
 
-After the initial start, `hss-server` creates its configuration file (`[USER_CONFIG_DIR]/hss_server/config.ini`). The config file will contain the location where skills are installed, which by default is `[USER_CONFIG_DIR]/hss_server/skills`.
+After the initial start, `hss-server` creates its configuration file (`[USER_CONFIG_DIR]/hss_server/config.ini`). The config file will contain several configuration options, especially the location where skills are installed, which by default is `[USER_CONFIG_DIR]/hss_server/skills`.
 
 On Linux, the `USER_CONFIG_DIR` will be `~/.config`, on MacOS it will be `~/Library/Application Support`.
 
-## Updating
+### Updating
 
 Just simply use `pip` again to update:
 
 ```
-/home/s710 $> cd hss
-/home/s710/hss $> source venv/bin/activate
-(venv) /home/s710/hss $> pip install hss_server --upgrade
-
+pi@ceres:~ $ cd /srv/hss
+pi@ceres:/srv/hss $ sudo -u hss -H -s
+hss@ceres:/srv/hss $ source bin/activate
+(venv) hss@ceres:/srv/hss $ pip install hss_server --upgrade
 ```
 
 ## Features
 
-The server opens a connection to the given MQTT broker, and listens on the intent-topics (by default: `hermes/intent/#`).
-Also, all available skills from the skills directory will be loaded, each skill as own process with its own virtualenv.
+The server is built as a proxy between the voice assistant and the skill implementations. As such, it is maintaining the MQTT connection to the voice assistant, and communicates with the skills using a simple RPC protocol. 
 
-For every incoming intent which is published via MQTT, the skill-server tries to find a matching skill, and, if found, hands the intent over to the skill so it can be handled. If the skill implements a response text, then this text will be returned via MQTT to the TTS topic (by default: `hermes/tts/say`).
+The server will listen for intents on the hermes intent-topic (by default: `hermes/intent/#`). When intents are processed, the responses will be published to the according hermes topics (such es `hermes/dialogueManager/endSession`). The skill implementation can make use of several hermes topics (e.g. to answer follow up questions, or start new sessions).
+
+When started, the server loads all available skills from the skills directory. Each skill will be started as own process with its own virtualenv and configuration.
+For every incoming intent which is published via MQTT, the skill-server tries to find a matching skill, and, if found, hands the intent over to the skill so it can be handled. 
 
 Each skill is running in its own python virtualenv, with its own python dependencies and configuration. Skills can be installed easily from a git repository using the `hss-cli` tool.
 
 
-## Options
+## Configuration
+
+The main configuration is stored within `[USER_CONFIG_DIR]/hss_server/config.ini`, and might look like the following:
+
+```
+[server]
+skill_directory = /home/hss/.config/hss_server/skills
+rpc_start_port = 51000
+tts_url = http://calypso.universe:12101/api/text-to-speech
+
+[mqtt]
+server = ceres.universe
+port = 1883
+
+[topics]
+intents = hermes/intent/#
+start_session = hermes/dialogueManager/startSession
+continue_session = hermes/dialogueManager/continueSession
+end_session = hermes/dialogueManager/endSession
+```
+
+After initial installation, `hss-server` will assume default values for the MQTT server. Topics *should* never be changed unless there is a good reason, since those are given by the hermes MQTT protocol.
+
+If the `tts_url` parameter is configured, replies from skills will be sent via HTTP instead of MQTT (this is for rhasspy 2.4 backwards compatibility).
+
+In Addition, several command line switches are available:
 
 ```
 Usage:
-   $ ./hss-server [-dhv][-hptTurcl arg]
+   $ ./hss-server [-dhv][-cl arg]
 
 Options:
-
-   -h [host]          MQTT host to connect to (default: localhost)
-   -p [port]          MQTT port (default: 1883)
-   -t [topic]         MQTT topic to listen on (default: hermes/intent/#)
-
-   -T [topic]         MQTT topic to publish TTS to (default: hermes/tts/say)
-   -u [url]           URL to post TTS to. If set, TTS is not sent via MQTT (default: None)
-
-   -r [port]          Starting port for RCP communication (default: 51000)
 
    -c [dir]           Directory path where the server's config.ini is located (default: user config dir)
 
@@ -128,11 +131,6 @@ Options:
    -v, --version      Show version and exit
 ```
 
-The options `-h`/`-p`/`-t`/`-T` are needed for MQTT communication with the voice assistant.
-
-The option `-u` switches the text-to-speech output from MQTT to HTTP, in case the voice assistant does not support MQTT-based TTS messages. For rhasspy <= 2.4, this should be set to `http://[RHASSPYHOST]:12101/api/text-to-speech`.
-
-The `-r` option denotes the beginning of the dynamic RPC port range, and should not be changed unless there are issues with other services.
 
 # CLI
 
@@ -176,15 +174,64 @@ Installing a skill involves the following steps:
 
 The server must be restarted after installing a new skill.
 
+Installing is done using the `-i` switch for `hss-cli` followed by the GIT repo URL of the skill.
+
+#### Example
+```
+(venv) hss@ceres:/srv/hss $ hss-cli -i https://github.com/patrickjane/hss-s710-lightsha
+Installing 'hss-s710-lightsha' into '/home/hss/.config/hss_server/skills/hss-s710-lightsha'
+Cloning repository ...
+Creating venv ...
+Installing dependencies ...
+Collecting hss_skill>=0.2.1 (from -r requirements.txt (line 1))
+  Using cached https://files.pythonhosted.org/packages/
+...  
+Initializing config.ini ...
+Section 'skill'
+Enter value for parameter 'hass_token': ABCXYZ
+
+Skill 'hss-s710-lightsha' successfully installed.
+
+(venv) hss@ceres:/srv/hss $ 
+```
+
 ### Updating
 
 Updating one or more skills is as easy as pulling changes from the remote GIT repository of the skill.
 
 In addition, `hss-cli` will compare the existing `config.ini` (if it exists) with a new `config.ini.default`, to detect newly added configuration parameters, and then prompt the user for the parameters.
 
+Updating is done using the `-u` switch for `hss-cli` followed by a skill name. If no skill name is given, all skills will be updated.
+
+#### Example
+
+```
+(venv) hss@ceres:/srv/hss $ hss-cli -u hss-s710-rmv
+Updating skill 'hss-s710-rmv' ...
+
+No update for skill 'hss-s710-rmv' available.
+
+(venv) hss@ceres:/srv/hss $
+```
+
 ### Uninstalling
 
 Uninstalling simply leads to the deletion of the skill's subfolder within the skill-directory. No other actions involved.
+
+Uninstalling is done using the `-r` switch for `hss-cli` followed by a skill name.
+
+```
+(venv) hss@ceres:/srv/hss $ hss-cli -r hss-s710-rmv
+Uninstalling skill 'hss-s710-rmv'
+This will erase the directory '/home/hss/.config/hss_server/skills/hss-s710-rmv'
+WARNING: The operation cannot be undone. Continue? (yes|NO)
+yes
+Uninstalling ...
+
+Skill 'hss-s710-rmv' successfully uninstalled.
+
+(venv) hss@ceres:/srv/hss $
+```
 
 # Skill development
 In order to develop your own skill, check out the `hss_skill` package at [HSS - Skill](https://github.com/patrickjane/hss-skill). It will give detailed instructions of how to develop skills for the hermes skill server.
@@ -234,10 +281,9 @@ The log will appear in `/var/log/syslog`:
 ```
 pi@ceres:~ $ tail -f /var/log/syslog
 May  7 08:54:22 ceres systemd[1]: Started Hermes Skill Server.
-May  7 08:54:23 ceres python3[19600]: INFO:hss: Hermes Skill Server v0.2.2
-May  7 08:54:23 ceres python3[19600]: INFO:hss: Using config dir '/home/hss/.config/hss_server'
-May  7 08:54:23 ceres python3[19600]: INFO:hss: Loading skills from '/home/hss/.config/hss_server/skills'
-May  7 08:54:23 ceres python3[19600]: INFO:hss_server.skillserver: Loading skills ...
+May  7 08:54:23 ceres python3[19600]: INFO:hss: Hermes Skill Server v0.3.0
+May  7 08:54:23 ceres python3[19600]: INFO:hss: Using config directory: '/home/hss/.config/hss_server'
+May  7 08:54:23 ceres python3[19600]: INFO:hss: Using skills directory: '/home/hss/.config/hss_server/skills'
 ```
 
 If you need additional command line parameters, you can put them in the service file at the end of the following line:

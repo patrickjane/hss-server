@@ -27,8 +27,9 @@ class Collection:
     # ctor
     # --------------------------------------------------------------------------
 
-    def __init__(self, start_port, skills_path):
+    def __init__(self, parent_port, start_port, skills_path):
         self.log = logging.getLogger(__name__)
+        self.parent_port = parent_port
         self.start_port = start_port
         self.skills_directory = os.path.join(
             os.path.abspath(os.path.dirname(__file__)), skills_path)
@@ -45,14 +46,12 @@ class Collection:
     # init
     # --------------------------------------------------------------------------
 
-    def init(self):
+    async def init(self):
 
         # read subdirectories of skills folder
         # subdirectories are expected to represent the skill-name (e.g. 's710-weather')
         # subdirectory name must not include '.' as a character
         # subdirectories must contain the file 'main.py'
-
-        self.log.info("Initializing skills ...")
 
         current_port = self.start_port
 
@@ -62,7 +61,7 @@ class Collection:
 
             skill_name = filename
 
-            res = self.init_skill(skill_name, filename, current_port)
+            res = await self.init_skill(skill_name, filename, current_port, self.parent_port)
 
             if res is not True:
                 return res
@@ -77,15 +76,17 @@ class Collection:
     # init_skill
     # --------------------------------------------------------------------------
 
-    def init_skill(self, skill_name, filename, port):
+    async def init_skill(self, skill_name, filename, port, parent_port):
 
         # create skill instance
 
-        sk = skill.Skill(skill_name, filename, self.skills_directory, port)
+        sk = skill.Skill(skill_name, filename, self.skills_directory, port, parent_port)
+
+        self.skills.append(sk)
 
         # spawn subprocess & connect to its RPC server
 
-        res = sk.init()
+        res = await sk.init()
 
         if res is not True:
             return res
@@ -102,8 +103,6 @@ class Collection:
 
         # finally add skill to list & register its intents
 
-        self.skills.append(sk)
-
         for intent in intent_list:
             self.log.debug(
                 "Registering intent '{}' for skill '{}'".format(intent, skill_name))
@@ -113,10 +112,10 @@ class Collection:
         return True
 
     # --------------------------------------------------------------------------
-    # respawn_skill
+    # respawn_skill (async)
     # --------------------------------------------------------------------------
 
-    def respawn_skill(self, sk):
+    async def respawn_skill(self, sk):
 
         # try to re-create skill when it appears to have crashed
 
@@ -136,12 +135,12 @@ class Collection:
 
         # shut it down properly (or rather killingly ...)
 
-        sk.exit(kill=True)
+        await sk.exit(kill=True)
         del sk
 
         # try to create it anew
 
-        res = self.init_skill(skill_name, filename, port)
+        res = await self.init_skill(skill_name, filename, port, self.parent_port)
 
         if res is not True:
             self.log.error("Failed to respawn skill '{}'".format(skill_name))
@@ -152,12 +151,12 @@ class Collection:
     # exit
     # --------------------------------------------------------------------------
 
-    def exit(self):
+    async def exit(self):
         self.log.info("Stopping skills ...")
 
         for sk in self.skills:
             try:
-                sk.exit()
+                await sk.exit()
             except Exception as e:
                 self.log.error(
                     'Failed to exit skill "{}" ({})'.format(skill.name, e))
