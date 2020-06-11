@@ -38,6 +38,7 @@ class SkillServer:
         self.rpc_server_task = None
         self.mq = None
         self.collection = collection.Collection(
+            cfg,
             self.rpc_start_port,
             self.rpc_start_port + 1,    # hss-server is having its own rpc port
             self.cfg["skill_directory"])

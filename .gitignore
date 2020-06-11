@@ -8,3 +8,5 @@ venv
 dist
 build
 *egg*
+*.graffle
+serv

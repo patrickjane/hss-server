@@ -31,6 +31,7 @@ class RpcClient:
         self.rpc_client = None
         self.reader = None
         self.writer = None
+        self.seq = 0
 
     # --------------------------------------------------------------------------
     # connect (async)
@@ -54,7 +55,9 @@ class RpcClient:
     # --------------------------------------------------------------------------
 
     async def execute(self, command, payload = None):
-        package = { "command": command, "payload": payload }
+        package = { "seq": self.seq, "command": command, "payload": payload }
+
+        self.seq = self.seq + 1
 
         json_string = json.dumps(package, ensure_ascii=False).replace('\n', '\\n') + '\n'
 
@@ -128,8 +131,8 @@ class RpcServer:
             self.log.debug("Got new RPC request with command '{}'".format(
                 request_obj["command"] if "command" in request_obj else ""))
 
-            if not request_obj or "command" not in request_obj or "payload" not in request_obj:
-                self.log.error("Received malformed RPC request (missing mandatory json propertis 'command'/'payload'")
+            if not request_obj or "command" not in request_obj or "payload" not in request_obj or "seq" not in request_obj:
+                self.log.error("Received malformed RPC request (missing mandatory json propertis 'seq/command'/'payload'")
                 return
 
             res = await self.controller.dispatch_skill_request(request_obj["command"], request_obj["payload"])
@@ -137,7 +140,8 @@ class RpcServer:
             if not res:
                 res = ""
 
-            json_string = json.dumps({"payload": res}, ensure_ascii=False).replace('\n', '\\n') + '\n'
+            json_string = json.dumps({"seq": request_obj["seq"], "command": "response", "payload": res},
+                    ensure_ascii=False).replace('\n', '\\n') + '\n'
 
             writer.write(json_string.encode('utf8'))
             await writer.drain()

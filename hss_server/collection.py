@@ -27,8 +27,9 @@ class Collection:
     # ctor
     # --------------------------------------------------------------------------
 
-    def __init__(self, parent_port, start_port, skills_path):
+    def __init__(self, cfg, parent_port, start_port, skills_path):
         self.log = logging.getLogger(__name__)
+        self.cfg = cfg
         self.parent_port = parent_port
         self.start_port = start_port
         self.skills_directory = os.path.join(
@@ -55,13 +56,11 @@ class Collection:
 
         current_port = self.start_port
 
-        for filename in os.listdir(self.skills_directory):
-            if filename in ignored_files:
+        for folder_name in os.listdir(self.skills_directory):
+            if folder_name in ignored_files:
                 continue
 
-            skill_name = filename
-
-            res = await self.init_skill(skill_name, filename, current_port, self.parent_port)
+            res = await self.init_skill(folder_name, current_port, self.parent_port)
 
             if res is not True:
                 return res
@@ -76,11 +75,12 @@ class Collection:
     # init_skill
     # --------------------------------------------------------------------------
 
-    async def init_skill(self, skill_name, filename, port, parent_port):
+    async def init_skill(self, skill_name, port, parent_port):
 
         # create skill instance
 
-        sk = skill.Skill(skill_name, filename, self.skills_directory, port, parent_port)
+        sk = skill.Skill(self.cfg, skill_name,
+                self.skills_directory, port, parent_port)
 
         self.skills.append(sk)
 
@@ -108,7 +108,7 @@ class Collection:
                 "Registering intent '{}' for skill '{}'".format(intent, skill_name))
             self.intent_map[intent] = sk
 
-        self.log.info("Skill '{}' loaded".format(skill_name))
+        self.log.info("Loaded {} skill '{}' v{}".format(sk.info["platform"], skill_name, sk.info["version"]))
         return True
 
     # --------------------------------------------------------------------------
@@ -120,7 +120,6 @@ class Collection:
         # try to re-create skill when it appears to have crashed
 
         skill_name = sk.name
-        filename = sk.filename
         port = sk.port
 
         # first remove it entirely from intent-map and list of skills
@@ -140,7 +139,7 @@ class Collection:
 
         # try to create it anew
 
-        res = await self.init_skill(skill_name, filename, port, self.parent_port)
+        res = await self.init_skill(self.cfg, skill_name, port, self.parent_port)
 
         if res is not True:
             self.log.error("Failed to respawn skill '{}'".format(skill_name))

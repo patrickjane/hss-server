@@ -16,6 +16,8 @@ import subprocess
 import configparser
 import shutil
 import datetime
+import json
+
 from appdirs import user_config_dir
 import pkg_resources
 
@@ -33,6 +35,8 @@ except Exception as e:
 skills_directory = None
 python_bin = None
 ignored_files = ["__init__.py", "__pycache__", ".DS_Store"]
+hss_config_ini = None
+known_types = ['weather', 'calendar', 'music', 'datetime', 'news', 'games', 'fun', 'utility', 'automation']
 
 # ------------------------------------------------------------------------------
 # eprint
@@ -111,21 +115,22 @@ def version():
 def run():
     global skills_directory
     global python_bin
+    global hss_config_ini
 
     config = configparser.ConfigParser()
     config_dir = args["config-dir"] if "config-dir" in args else user_config_dir("hss_server", "s710")
-    config_ini = os.path.join(config_dir, "config.ini") if config_dir else None
+    hss_config_ini = os.path.join(config_dir, "config.ini") if config_dir else None
 
     if not config_dir:
         raise Exception("Unable to get configuration dir. Use --config-dir option.")
 
-    if not os.path.exists(config_ini):
-        return error("Config file '{}' does not exist. Did you set up the skill-server?".format(config_ini))
+    if not os.path.exists(hss_config_ini):
+        return error("Config file '{}' does not exist. Did you set up the skill-server?".format(hss_config_ini))
 
-    config.read(config_ini)
+    config.read(hss_config_ini)
 
     if not "server" in config or not "skill_directory" in config["server"]:
-        return error("Skills-directory not found in config file '{}'. Did you set up the skill-server?".format(config_ini))
+        return error("Skills-directory not found in config file '{}'. Did you set up the skill-server?".format(hss_config_ini))
 
     skills_directory = config["server"]["skill_directory"]
 
@@ -140,13 +145,59 @@ def run():
     if "list" in args or "l" in args:
         do_list()
     elif "install" in args or "i" in args:
-        do_install(url=args["install"] if "install" in args else args["i"])
+        do_install(args["install"] if "install" in args else args["i"], config)
     elif "update" in args or "u" in args:
-        do_update_all(name=args["update"] if "update" in args else args["u"])
+        do_update_all(args["update"] if "update" in args else args["u"], config)
     elif "uninstall" in args or "r" in args:
-        do_uninstall(name=args["uninstall"] if "uninstall" in args else args["r"])
+        do_uninstall(args["uninstall"] if "uninstall" in args else args["r"])
     else:
         help()
+
+# ------------------------------------------------------------------------------
+# open_info_file
+# ------------------------------------------------------------------------------
+
+
+def open_info_file(skill_directory):
+    def check_info_file(contents):
+        if not "platform" in contents:
+            print("Missing property 'platform' in skill.json, cannot install skill")
+            return False
+
+        if not "intents" in contents:
+            print("Missing property 'intents' in skill.json, cannot install skill")
+            return False
+
+        if not "type" in contents:
+            print("Missing property 'type' in skill.json, cannot install skill")
+            return False
+
+        if not contents["type"] in known_types:
+            print("Unknown/invalid skill type '{}' in skill.json, cannot install skill".format(contents["type"]))
+            return False
+
+        return True
+
+    info_file = os.path.join(skill_directory, "skill.json")
+    info = None
+
+    # get skill.json infos
+
+    if not os.path.isfile(info_file):
+        print("Error: Missing file '{}'".format(info_file))
+        return False
+
+    with open(info_file) as json_file:
+        try:
+            info = json.load(json_file)
+        except Exception as e:
+            print("Invalid/malformed file '{}' ({}), cannot update skill".format(info_file, e))
+            return False
+
+    if not check_info_file(info):
+        return None
+
+    return info
 
 # ------------------------------------------------------------------------------
 # do_list
@@ -154,18 +205,31 @@ def run():
 
 
 def do_list():
-    print("--------------------------------------------------------------------------------")
-    print("{0: <35} {1: <8} {2: <7} {3: <20} {4: <1}".format("Skill", "Version", "Commit", "Date", "Config"))
-    print("--------------------------------------------------------------------------------")
+    print("-----------------------------------------------------------------------------------------------------")
+    print("{0: <40} {1: <13} {2: <10} {3: <15} {4: <12} {5: <1}".format(
+            "Skill", "Type", "Version", "Platform", "Date", "Config"))
+    print("-----------------------------------------------------------------------------------------------------")
 
     for skill_name in os.listdir(skills_directory):
         if skill_name not in ignored_files:
             skill_directory = os.path.join(skills_directory, skill_name)
             config_ini = os.path.join(skill_directory, "config.ini")
+            skill_json = os.path.join(skill_directory, "skill.json")
             version_file = os.path.join(skill_directory, "version")
             repo = Repo(skill_directory)
-            version = "-"
 
+            info = None
+
+            with open(skill_json) as skill_json:
+                try:
+                    info = json.load(skill_json)
+                except Exception as e:
+                    print("Invalid/malformed file '{}' ({})".format(info_file, e))
+                    return
+
+            version = info["version"] if "version" in info else "-"
+            platform = info["platform"] if "platform" in info else "-"
+            type = info["type"] if "type" in info else "-"
             cfg = "y" if os.path.exists(config_ini) else "n"
 
             if os.path.exists(version_file) and os.path.isfile(version_file):
@@ -175,9 +239,10 @@ def do_list():
             try:
                 headcommit = repo.head.commit
                 commit = headcommit.hexsha[:7]
-                dt = datetime.datetime.utcfromtimestamp(headcommit.committed_date).strftime("%m/%d/%Y, %H:%M:%S")
+                dt = datetime.datetime.utcfromtimestamp(headcommit.committed_date).strftime("%D")
 
-                print("{0: <35} {1: <8} {2: <7} {3: <20} {4: <1}".format(skill_name, version, commit, dt, cfg))
+                print("{0: <40} {1: <13} {2: <10} {3: <15} {4: <12} {5: <1}".format(
+                    skill_name, type, version, platform, dt, cfg))
             except Exception as e:
                 pass
 
@@ -186,16 +251,18 @@ def do_list():
 # ------------------------------------------------------------------------------
 
 
-def do_install(url):
+def do_install(url, config):
+    repo_name = os.path.basename(os.path.normpath(url))
+    skill_directory = os.path.join(skills_directory, repo_name)
+
+    def cleanup():
+        shutil.rmtree(skill_directory)
+
     if not url:
         return error("A valid GIT url must be given to install a skill")
 
-    repo_name = os.path.basename(os.path.normpath(url))
-    skill_directory = os.path.join(skills_directory, repo_name)
-    venv_directory = os.path.join(skill_directory, "venv")
     config_ini = os.path.join(skill_directory, "config.ini")
     config_ini_default = os.path.join(skill_directory, "config.ini.default")
-    venv_python = os.path.join(venv_directory, "bin", "python3")
 
     if os.path.exists(skill_directory):
         return error("Cannot install skill '{}', directory '{}' already exists".format(repo_name, skill_directory))
@@ -212,17 +279,49 @@ def do_install(url):
     except Exception as e:
         error("Failed to clone repo from '{}'".format(e))
 
-    # setup python virtualenv and install dependencies
-    # using subprocesses
+    # get skill.json infos
 
-    print("Creating venv ...")
+    info = open_info_file(skill_directory)
 
-    subprocess.run([python_bin, "-m", "venv", venv_directory], cwd=skill_directory)
+    if not info:
+        return False
 
-    print("Installing dependencies ...")
+    if info["platform"] == "hss-python":
+        venv_directory = os.path.join(skill_directory, "venv")
+        venv_python = os.path.join(venv_directory, "bin", "python3")
 
-    subprocess.run([venv_python, "-m", "pip",
-                    "install", "-r", "requirements.txt"], cwd=skill_directory)
+        # setup python virtualenv and install dependencies
+        # using subprocesses
+
+        print("Creating venv ...")
+
+        res = subprocess.run([python_bin, "-m", "venv", venv_directory], cwd=skill_directory)
+
+        if not res or res.returncode != 0:
+            print("Failed to setup venv");
+            return cleanup()
+
+        print("Installing dependencies ...")
+
+        res = subprocess.run([venv_python, "-m", "pip",
+                        "install", "-r", "requirements.txt"], cwd=skill_directory)
+
+        if not res or res.returncode != 0:
+            print("Failed to install dependencies venv");
+            return cleanup()
+
+    elif info["platform"] == "hss-node":
+        if not "npm" in config["server"]:
+            print("'npm' path not configured in '{}', cannot install Node.JS based skill".format(hss_config_ini))
+            return cleanup()
+
+        print("Installing dependencies ...")
+
+        res = subprocess.run([config["server"]["npm"], "install"], cwd=skill_directory)
+
+    else:
+        print("Platform '{}' is not supported, cannot install skill".format(info["platform"]))
+        return cleanup()
 
     # finally, check if there is a config.ini.default. if so,
     # it should be copied to config.ini, and empty parameters should be queried
@@ -241,13 +340,19 @@ def do_install(url):
                 if not config[sect][key]:
                     val = input("Enter value for parameter '{}': ".format(key))
                     config[sect][key] = val
+                else:
+                    val = input("Enter value for parameter '{}' [{}]: ".format(key, config[sect][key]))
+
+                    if val:
+                        config[sect][key] = val
 
         # then write back the changes to the config.ini
 
         with open(config_ini, 'w') as file:
             config.write(file)
 
-    print("\nSkill '{}' successfully installed.\n".format(repo_name))
+    print("\nSkill '{}' version {} successfully installed.\n".format(
+            repo_name, info["version"] if "version" in info else "-"))
 
 # ------------------------------------------------------------------------------
 # do_uninstall
@@ -286,15 +391,14 @@ def do_uninstall(name):
 # do_update_one
 # ------------------------------------------------------------------------------
 
-def do_update_one(name):
+
+def do_update_one(name, hss_config):
     if not name:
         return error("Skill name must be given in order to uninstall a skill")
 
     skill_directory = os.path.join(skills_directory, name)
-    venv_directory = os.path.join(skill_directory, "venv")
     config_ini = os.path.join(skill_directory, "config.ini")
     config_ini_default = os.path.join(skill_directory, "config.ini.default")
-    venv_python = os.path.join(venv_directory, "bin", "python3")
 
     old_headcommit = None
 
@@ -324,52 +428,113 @@ def do_update_one(name):
 
     new_headcommit = repo.head.commit
 
-    if new_headcommit and old_headcommit and new_headcommit != old_headcommit:
-        print("Installing/updating dependencies ...")
+    # check if actually theres an update
 
-        subprocess.run([venv_python, "-m", "pip",
+    if not new_headcommit or not old_headcommit or new_headcommit == old_headcommit:
+        print("\nNo update for skill '{}' available.\n".format(name))
+        return False
+
+    info = open_info_file(skill_directory)
+
+    if not info:
+        return False
+
+    # update dependencies
+
+    print("Installing/updating dependencies ...")
+
+    res = None
+
+    if info["platform"] == "hss-python":
+        venv_directory = os.path.join(skill_directory, "venv")
+        venv_python = os.path.join(venv_directory, "bin", "python3")
+
+        res = subprocess.run([venv_python, "-m", "pip",
                         "install", "-r", "requirements.txt"], cwd=skill_directory)
+
+    elif info["platform"] == "hss-node":
+        if not "npm" in hss_config["server"]:
+            print("'npm' path not configured in '{}', cannot update dependencies".format(hss_config_ini))
+        else:
+            res = subprocess.run([hss_config["server"]["npm"], "install"], cwd=skill_directory)
+
+    if res and res.returncode != 0:
+        print("Updating dependencies failed")
 
     # now evaluate the (potentially changed) config.ini.default and get the delta
     # prompt for new unknown values
 
-    if os.path.exists(config_ini_default) and os.path.isfile(config_ini_default):
+    if os.path.exists(config_ini_default) and os.path.isfile(config_ini_default) and config:
         new_config = configparser.ConfigParser()
         new_config.read(config_ini_default)
+        count = 0
+
+        print("Checking existing config.ini parameters")
+
+        for sect in config.sections():
+            print("Section '{}'".format(sect))
+
+            for key in list(config[sect].keys()):
+                count = count + 1
+
+                if not config[sect][key]:
+                    val = input("Enter value for parameter '{}': ".format(key))
+                    config[sect][key] = val
+                else:
+                    val = input("Enter value for parameter '{}' [{}]: ".format(key, config[sect][key]))
+
+                    if val:
+                        config[sect][key] = val
+
+        if count == 0:
+            print("None.")
+
+        print("Checking new config.ini parameters")
+        count = 0
 
         for sect in new_config.sections():
             if not sect in config:
                 config.add_section(sect)
 
+            print("Section '{}'".format(sect))
+
             for key in list(new_config[sect].keys()):
                 if not key in config[sect]:
+                    count = count + 1
+
                     if new_config[sect][key]:
-                        config[sect][key] = new_config[sect][key]
+                        val = input(
+                            "Enter value for new parameter '{}' [{}]: ".format(key, new_config[sect][key]))
+
+                        config[sect][key] = val if val else new_config[sect][key]
                     else:
                         val = input(
                             "Enter value for new parameter '{}': ".format(key))
                         config[sect][key] = val
+
+                    if val:
+                        config[sect][key] = val
+
+        if count == 0:
+            print("None.")
 
         # then write back the changes to the config.ini
 
         with open(config_ini, 'w') as file:
             config.write(file)
 
-    if new_headcommit and old_headcommit and new_headcommit != old_headcommit:
-        print("\nSkill '{}' successfully updated.\n".format(name))
-        return True
+    print("\nSkill '{}' successfully updated to version {}.\n".format(
+        name, info["version"] if info and "version" in info else "-"))
 
-    print("\nNo update for skill '{}' available.\n".format(name))
-    return False
-
+    return True
 
 # ------------------------------------------------------------------------------
 # do_update_all
 # ------------------------------------------------------------------------------
 
-def do_update_all(name):
+def do_update_all(name, config):
     if name:
-        return do_update_one(name)
+        return do_update_one(name, config)
 
     n_updates = 0
     n_nones = 0

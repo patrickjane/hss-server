@@ -12,6 +12,7 @@ import os
 import logging
 import subprocess
 import time
+import json
 
 from hss_server import rpc
 
@@ -26,31 +27,88 @@ class Skill:
     # ctor
     # --------------------------------------------------------------------------
 
-    def __init__(self, skill_name, filename, skills_directory, port, parent_port):
+    def __init__(self, cfg, skill_name, skills_directory, port, parent_port):
         self.log = logging.getLogger("skill-" + skill_name)
+        self.cfg = cfg
         self.port = port
         self.parent_port = parent_port
         self.name = skill_name
-        self.filename = filename
         self.rpc_client = rpc.RpcClient(port)
+        self.child_process = None
+        self.skills_directory = skills_directory
+        self.info = None
 
         self.python_bin = os.path.join(
-            skills_directory, filename, "venv", "bin", "python")
-        self.script_file = os.path.join(skills_directory, filename, "main.py")
+            skills_directory, self.name, "venv", "bin", "python")
+        self.info_file = os.path.join(skills_directory, self.name, "skill.json")
 
     # --------------------------------------------------------------------------
     # init
     # --------------------------------------------------------------------------
 
     async def init(self):
-        try:
-            self.child_process = subprocess.Popen(
-                [self.python_bin, self.script_file,
-                    "--skill-name=" + self.name,
-                    "--port="+str(self.port),
-                    "--parent-port="+str(self.parent_port)])
-        except Exception as e:
-            self.log.error("Failed to start skill ({})".format(e))
+        def check_info_file():
+            if not "platform" in self.info:
+                self.log.error("Missing property 'platform' in skill.json")
+                return False
+
+            if not "intents" in self.info:
+                self.log.error("Missing property 'intents' in skill.json")
+                return False
+
+            return True
+
+        def complete_args(to):
+            to.append("--skill-name=" + self.name)
+            to.append("--port="+str(self.port))
+            to.append("--parent-port="+str(self.parent_port))
+
+            if self.cfg["debug"]:
+                to.append("--debug=true")
+
+            return to
+
+        # load skill.json file for skill & platform info
+
+        if not os.path.isfile(self.info_file):
+            self.log.error("Missing file '{}', cannot start skill".format(self.info_file))
+            return False
+
+        with open(self.info_file) as json_file:
+            try:
+                self.info = json.load(json_file)
+            except Exception as e:
+                self.log.error("Invalid/malformed file '{}', cannot start skill".format(self.info_file))
+                return False
+
+        if not check_info_file():
+            return False
+
+        self.my_intents = self.info["intents"]
+
+        # actually spawn skill-subprocess, depending on platform
+
+        if self.info["platform"] == "hss-python":
+            script_file = os.path.join(self.skills_directory, self.name, "main.py")
+            args = [self.python_bin, script_file]
+
+            try:
+                self.child_process = subprocess.Popen(complete_args(args))
+            except Exception as e:
+                self.log.error("Failed to start skill ({})".format(e))
+
+        elif self.info["platform"] == "hss-node":
+            if not "node" in self.cfg:
+                self.log.error("Missing configuration of 'node' in config.ini, cannot start Node.JS based skill")
+                return False
+
+            script_file = os.path.join(self.skills_directory, self.name, "index.js")
+            args = [self.cfg["node"], script_file]
+
+            try:
+                self.child_process = subprocess.Popen(complete_args(args))
+            except Exception as e:
+                self.log.error("Failed to start skill ({})".format(e))
 
         tries = 0
 
@@ -71,7 +129,6 @@ class Skill:
 
             time.sleep(0.1)
 
-        self.my_intents = await self.rpc_client.execute("get_intentlist")
         return True
 
     # --------------------------------------------------------------------------
