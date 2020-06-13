@@ -105,7 +105,7 @@ class SkillServer:
     # stop (async)
     # --------------------------------------------------------------------------
 
-    async def stop(self, loop):
+    async def stop(self):
         if self.collection:
             await self.collection.exit()
 
@@ -121,3 +121,21 @@ class SkillServer:
         if self.mq:
             await self.mq.disconnect()
 
+    # --------------------------------------------------------------------------
+    # reload (async)
+    # --------------------------------------------------------------------------
+
+    async def reload(self):
+        if not self.collection:
+            self.log.error("No collection initialized, cannot reload")
+            return False
+
+        await self.collection.exit()
+
+        res = await self.collection.init()
+
+        if res is not True:
+            self.log.error("Initializing skills failed")
+            return res
+
+        return True

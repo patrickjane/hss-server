@@ -18,13 +18,15 @@ Skills can be managed easily using the `hss-cli` commandline tool (see below).
 
 The HSS Skill Server is compatible with the [Rhasspy voice assistant](https://github.com/synesthesiam/rhasspy).
 
+In order to ease the installation process further, a dedicated skill registry / marketplace was developed: The **HSS Skill Registry**. It is running as heroku app at [https://hss-registry.herokuapp.com/](https://hss-registry.herokuapp.com/). For details see the **Registry** chapter below.
+
 ### Demo
 
 
 
 ```
 (hss) hss@ceres:/srv/hss $ hss-server
-INFO:hss: Hermes Skill Server v0.4.0
+INFO:hss: Hermes Skill Server v0.5.0
 INFO:hss: Using config directory: '/home/hss/.config/hss_server'
 INFO:hss: Using skills directory: '/home/hss/.config/hss_server/skills'
 INFO:hss_server.skillserver: Sending TTS response to 'http://calypso.universe:12101/api/text-to-speech'
@@ -102,10 +104,16 @@ The main configuration is stored within `[USER_CONFIG_DIR]/hss_server/config.ini
 skill_directory = /home/hss/.config/hss_server/skills
 rpc_start_port = 51000
 tts_url = http://calypso.universe:12101/api/text-to-speech
+node = /usr/local/bin/node
+npm = /usr/local/bin/npm
 
 [mqtt]
 server = ceres.universe
 port = 1883
+
+[registry]
+host = https://hss-registry.herokuapp.com/
+svcroot = /services/v1/
 
 [topics]
 intents = hermes/intent/#
@@ -125,10 +133,23 @@ Directory where skills are installed.
 Starting port for RPC communication.
 
 Default: `51000`.
+
 ##### `server` / `tts_url` 
 If the `tts_url` parameter is configured, replies from skills will be sent via HTTP instead of MQTT (this is for rhasspy 2.4 backwards compatibility). 
 
 Default: `None`,
+
+##### `server` / `node` 
+Path to the Node.JS binary `node`. Needed for running skills with platform `hss-node`. 
+
+Default: `None`,
+
+##### `server` / `npm` 
+Path to the Node.JS binary `npm`. Needed for installing skills with platform `hss-node`. 
+
+Default: `None`,
+
+
 ##### `mqtt`/ `server`
 Hostname of the MQTT server.
 
@@ -138,6 +159,16 @@ Default: `localhost`.
 Hostname of the MQTT server.
 
 Default: `1883`.
+
+##### `registry`/ `host`
+Hostname of the HSS Skill Registry. 
+
+Default: `https://hss-registry.herokuapp.com/`.
+
+##### `registry `/ `svcroot `
+Services root path of the HSS Skill Registry. 
+
+Default: `/services/v1/`.
 
 ##### `topcis`/ `intents `
 MQTT topic on which `hss-server` listens for intents.
@@ -195,51 +226,91 @@ The `hss-cli` tool is used to:
 
 ```
 Usage:
-   $ ./hss-cli [-lhv][-iur arg]
+   $ hss-cli [options]
 
-Options:
+Skills:
 
-   -l              List all installed skills.
+   -l                             List all installed skills.
 
-   -i [url]        Install a new skill using [url]. [url] must be a valid GIT link.
-   -u ([name])     Update an already installed skill named [name].
-                   If [name] is ommited, ALL skills will be updated.
+   -i ([name]) (--url [url])      Install a new skill using [name]. [name] must be a valid HSS registry skill name.
+                                  Optionally, [url] can be used to directly install a skill from a git repository.
+   -u ([name])                    Update an already installed skill named [name].
+                                  If [name] is ommited, ALL skills will be updated.
+   -r [name]                      Uninstall an already installed skill named [name]
 
-   -r [name]       Uninstall an already installed skill named [name]
+Registry:
+
+   --search                       Query HSS registry for a list of available skills
+       (--type [type])            Restrict registry query to the given type
+       (--platform [platform])    Restrict registry query to the given platform
+       (--lang [language])        Restrict registry query to the given language
+
+   --publish -s [dir] -t [token]        Publishes a skill to the HSS registry. Required parameters are the
+                                        skill's directory [dir] (containing skill.json) and the token [token] which was obtained
+                                        when registering at the HSS registry.
+
+   --unpublish -s [name] -t [token]     Removes an already published skill from the HSS registry. Required parameters are the
+                                        skill's name [name] and the token [token] which was obtained
+                                        when registering at the HSS registry.
+
+   --register                           Registers a new account at the HSS registry.
+   --unregister                         Deletes an existing account from the HSS registry. Will also delete all associated skills.
+
+Help:
 
    -h, --help      Show this help and exit
    -v, --version   Show version and exit
 ```
 
+For the **registry** related commands, see chapter **Registry** below.
+
 ## Installing
 
-When installing skills, the GIT repository URL must be given. The repository name is considered to be the skill-name, and will be the subdirectory name within the skills-directory.
+When installing skills, the HSS Skill Registry (see chapter "Registry") is queried for details about the skill. Especially the git repo URL is determined. It is also possible to skip querying the registry and instead install directly from a git repo URL.
 
 Installing a skill involves the following steps:
 
+- determine repository URL by querying HSS Skill Registry
 - cloning the remote repository
 - creating a virtualenv
 - installing dependencies given by the skill developer (`requirements.txt`)
 - asking the user for configuration parameters, if the skill provides the `config.ini.default` file
+- (optional) register sentences at `rhasspy` (if a skill provides its own `sentences.ini`)
+- (optional) register slots at `rhasspy` (if a skill provides its own `slots.json`)
+- (optional) trigger `rhasspy` for training (if the skill provdes its own sentences/slots)
 
-The server must be restarted after installing a new skill.
+The server is automatically triggered for reload after installation, so the new skill will be instantly available.
 
-Installing is done using the `-i` switch for `hss-cli` followed by the GIT repo URL of the skill.
+Installing is done using the `-i` switch for `hss-cli` followed by the name of the skill as shown in the HSS Skill Registry. Optionally, instead of the skill name a direct git repo URL can be given with the `--url [URL]` switch.
 
 ```
-(venv) hss@ceres:/srv/hss $ hss-cli -i https://github.com/patrickjane/hss-s710-lightsha
-Installing 'hss-s710-lightsha' into '/home/hss/.config/hss_server/skills/hss-s710-lightsha'
+(venv) hss@ceres:/srv/hss $ hss-cli -i hss-s710-weather
+Installing 'hss-s710-weather' into '/home/hss/.config/hss_server/skills/hss-s710-weather'
 Cloning repository ...
 Creating venv ...
 Installing dependencies ...
-Collecting hss_skill>=0.2.1 (from -r requirements.txt (line 1))
+Collecting hss_skill>=0.4.2 (from -r requirements.txt (line 1))
   Using cached https://files.pythonhosted.org/packages/
 ...  
 Initializing config.ini ...
 Section 'skill'
-Enter value for parameter 'hass_token': ABCXYZ
+Enter value for parameter 'api_key': xxx
+Enter value for parameter 'homecity': Frankfurt am Main
+Updating sentences ...
+The following intents already exist: [s710:getTemperature], [s710:getForecast], [s710:hasSun], [s710:hasRain], [s710:hasSnow]
+Overwrite? (YES|no)
 
-Skill 'hss-s710-lightsha' successfully installed.
+Sentences successfully updated
+Updating slots ...
+The following slots already exist: relative_time
+Overwrite? (YES|no)
+
+Slots successfully updated
+Triggering traing ...
+Training successful
+Triggering hss-server with pid 35499 for reload
+
+Skill 'hss-s710-weather' version 1.0.0 successfully installed.
 
 (venv) hss@ceres:/srv/hss $ 
 ```
@@ -263,19 +334,30 @@ No update for skill 'hss-s710-rmv' available.
 
 ## Uninstalling
 
-Uninstalling simply leads to the deletion of the skill's subfolder within the skill-directory. No other actions involved.
+Uninstalling simply leads to the deletion of the skill's subfolder within the skill-directory. In addition, if the skill provides its own sentences, they will be removed from `rhasspy`, and training is triggered.
+
+Note: Currently there is no way in the `rhasspy` API to remove slots, therefore slots cannot be removed upon skill uninstall.
 
 Uninstalling is done using the `-r` switch for `hss-cli` followed by a skill name.
 
 ```
-(venv) hss@ceres:/srv/hss $ hss-cli -r hss-s710-rmv
-Uninstalling skill 'hss-s710-rmv'
-This will erase the directory '/home/hss/.config/hss_server/skills/hss-s710-rmv'
+(venv) hss@ceres:/srv/hss $ hss-cli -r hss-s710-weather
+Uninstalling skill 'hss-s710-weather'
+This will erase the directory '/home/hss/.config/hss_server/skills/hss-s710-weather'
 WARNING: The operation cannot be undone. Continue? (yes|NO)
 yes
 Uninstalling ...
+Removing sentences ...
+The following intents will be deleted: [s710:getTemperature], [s710:getForecast], [s710:hasSun], [s710:hasRain], [s710:hasSnow]
+Continue? (YES|no)
 
-Skill 'hss-s710-rmv' successfully uninstalled.
+Sentences successfully updated
+Trigger training? (YES|no)
+Triggering training ...
+Training successful
+Triggering hss-server with pid 35499 for reload
+
+Skill 'hss-s710-weather' successfully uninstalled.
 
 (venv) hss@ceres:/srv/hss $
 ```
@@ -366,4 +448,88 @@ Reload the daemon:
 
 ```
 pi@ceres:~ $ sudo systemctl enable hss.service
+```
+
+# Registry
+
+In order to ease the installation process further, a dedicated skill registry / marketplace was developed: The **HSS Skill Registry**. It is running as heroku app at [https://hss-registry.herokuapp.com/](https://hss-registry.herokuapp.com/).
+
+The website is currently pretty basic, and only servers as a quick overview. The `hss-cli` tool is used to interact with the registry. The following actions are available:
+
+- register a new account at the registry
+- unregister an existing account
+- publish a skill to the registry (needs existing account)
+- unpublish a skill (needs existing account)
+
+In addition, the registry can be browsed using the `hss-cli` tool or the website.
+
+Currently, there is **no interaction** with the user's e-mail at all, since the registry is in the state of a proof-of-concept. Similarly, the website is pretty simple, and no user profile administration whatsoever is available.
+
+## Concept
+
+The registry *does not* actually host skills. Instead the idea is that it only maintains a list of meta information about each skill, especially its name, platform and git repository. As a consequence, `hss-cli` can just query the registry to obtain the git repo URL, so the user does not need to know where a skill is hosted.
+
+## Browsing skills
+
+The command `hss-cli --search` can be used to search the registry. If no further parameters are given, all skills in the registry are shown. The parameters `--type [type]`, `--platform [platform]` and `--lang [language]` can be used to filter the results.
+
+```
+(venv) hss@ceres:/srv/hss $ hss-cli --search --lang de_DE
+----------------------------------------------------------------------------------------------------------------------------------------
+Name                                     Type           Platform        Author               Description
+----------------------------------------------------------------------------------------------------------------------------------------
+hss-s710-weather                         weather        hss-python      Patrick Jane         Queries weather from DarkSky.net
+
+(venv) hss@ceres:/srv/hss $ hss-cli --search --lang en_GB
+No skills found in registry
+```
+
+## Account registration
+
+Use the command `hss-cli --register` to register a new account:
+
+```
+(venv) hss@ceres:/srv/hss $ hss-cli --register
+
+Registering new user at HSS registry.
+Username: myUser
+E-Mail: me@mail.com
+Password:
+Password (confirm):
+Creating account: myUser / me@mail.com, continue? (YES|no)
+
+
+Registration successful. Your token is: XXXXXXXX
+
+Please SAFELY store this token, as there is no way to recover it.
+The token will be needed to publish/unpublish skills to the registry.
+
+(venv) hss@ceres:/srv/hss $
+```
+
+## Account deletion
+
+Use the command `hss-cli --unregister` to delete your account. This will also delete all published skills.
+
+## Publishing a skill
+
+Use the command `hss-cli --publish` to publish an existing skill. As parameters the folder where the skill files are located (local filesystem) and the token which was received upon registration are required.
+ 
+The skill's folder **must** contain the `skill.json` file, otherwise publishing will fail. See [HSS - Skill (node)](https://github.com/patrickjane/node-hss-skill) or [HSS - Skill (python)](https://github.com/patrickjane/hss-skill) for details on skill development.
+
+```
+(venv) hss@ceres:/srv/hss $ hss-cli --publish -s /home/user/development/hss-skills/hss-s710-weather -t XXXXXXXX
+Successfully published skill.
+
+(venv) hss@ceres:/srv/hss $
+```
+
+## Unpublishing a skill
+Use the command `hss-cli --unpublish` to remove a skill from the registry. As parameters the skill name as well as the token obtained during registration are required.
+
+```
+(venv) hss@ceres:/srv/hss $ hss-cli --unpublish -s hss-s710-weather -t XXXXXXXX
+Successfully unpublish skill.
+
+(venv) hss@ceres:/srv/hss $ 
 ```

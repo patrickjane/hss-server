@@ -17,6 +17,7 @@ import configparser
 import pkg_resources
 import asyncio
 
+from pid import PidFile
 from appdirs import user_config_dir
 
 from hss_server import logger
@@ -188,6 +189,11 @@ async def run(cfg):
     loop.add_signal_handler(
         s, lambda s=s: asyncio.create_task(shutdown(s, loop)))
 
+    s = signal.SIGHUP
+
+    loop.add_signal_handler(
+        s, lambda s=s: asyncio.create_task(reload(s)))
+
     server = skillserver.SkillServer(cfg)
 
     await server.start()
@@ -203,15 +209,54 @@ async def shutdown(signal, loop):
     if log:
         log.info(f"Received {signal.name}, shutting down ...")
 
-    await server.stop(loop)
+    await server.stop()
     server = None
 
     loop.stop()
 
 # ------------------------------------------------------------------------------
+# reload (signal handler)
+# ------------------------------------------------------------------------------
+
+
+async def reload(signal):
+    global server
+
+    if log:
+        log.info(f"Received {signal.name}, reloading ...")
+
+    try:
+        res = await server.reload()
+
+        if not res:
+            log.error("Failed to reload")
+        else:
+            log.info("Done reloading")
+    except Exception as e:
+        log.error("Failed to reload ({})".format(e))
+
+# ------------------------------------------------------------------------------
 # main
 # ------------------------------------------------------------------------------
 
+def main():
+    loop = asyncio.get_event_loop()
+
+    try:
+        asyncio.run(run(cfg))
+    except KeyboardInterrupt:
+        pass
+    except Exception as e:
+        log.error("Got exception: {}".format(e))
+    finally:
+        if server:
+            loop.run_until_complete(server.stop())
+
+        loop.close()
+
+# ------------------------------------------------------------------------------
+# main
+# ------------------------------------------------------------------------------
 
 if __name__ == "__main__":
     args = parseArgs()
@@ -223,18 +268,8 @@ if __name__ == "__main__":
     elif "version" in args or "v" in args:
         version()
     else:
-        loop = asyncio.get_event_loop()
-
-        try:
-            asyncio.run(run(cfg))
-        except KeyboardInterrupt:
-            pass
-        except Exception as e:
-            log.error("Got exception: {}".format(e))
-        finally:
-            if server:
-                loop.run_until_complete(server.stop(loop))
-            loop.close()
+        with PidFile(os.path.join(config_dir, "server.pid")) as p:
+            main()
 
     if log:
         log.info("Bye.")

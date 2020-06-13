@@ -108,7 +108,8 @@ class Collection:
                 "Registering intent '{}' for skill '{}'".format(intent, skill_name))
             self.intent_map[intent] = sk
 
-        self.log.info("Loaded {} skill '{}' v{}".format(sk.info["platform"], skill_name, sk.info["version"]))
+        self.log.info("Loaded {} skill '{}' v{}".format(sk.info["platform"],
+            skill_name, sk.info["version"] if "version" in sk.info else "-"))
         return True
 
     # --------------------------------------------------------------------------
@@ -159,6 +160,11 @@ class Collection:
             except Exception as e:
                 self.log.error(
                     'Failed to exit skill "{}" ({})'.format(skill.name, e))
+
+        # reset containers
+
+        self.skills = []
+        self.intent_map = {}
 
     # --------------------------------------------------------------------------
     # get_skill
