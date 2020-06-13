@@ -292,16 +292,19 @@ def do_list():
 
             info = None
 
-            with open(skill_json) as skill_json:
-                try:
-                    info = json.load(skill_json)
-                except Exception as e:
-                    print("Invalid/malformed file '{}' ({})".format(info_file, e))
-                    return
+            try:
+                with open(skill_json) as skill_json:
+                    try:
+                        info = json.load(skill_json)
+                    except Exception as e:
+                        print("Invalid/malformed file '{}' ({})".format(info_file, e))
+                        return
+            except Exception as e:
+                pass
 
-            version = info["version"] if "version" in info else "-"
-            platform = info["platform"] if "platform" in info else "-"
-            type = info["type"] if "type" in info else "-"
+            version = info["version"] if info and "version" in info else "-"
+            platform = info["platform"] if info and "platform" in info else "-"
+            type = info["type"] if info and "type" in info else "-"
             cfg = "y" if os.path.exists(config_ini) else "n"
 
             try:
