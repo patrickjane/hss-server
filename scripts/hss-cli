@@ -278,10 +278,10 @@ def open_info_file(skill_directory):
 
 
 def do_list():
-    print("-----------------------------------------------------------------------------------------------------")
-    print("{0: <40} {1: <13} {2: <10} {3: <15} {4: <12} {5: <1}".format(
-            "Skill", "Type", "Version", "Platform", "Date", "Config"))
-    print("-----------------------------------------------------------------------------------------------------")
+    print("-----------------------------------------------------------------------------------------------------------------")
+    print("{0: <40} {1: <13} {2: <10} {3: <15} {4: <12} {5: <9} {6: <10}".format(
+            "Skill", "Type", "Version", "Platform", "Date", "Config", "Language"))
+    print("-----------------------------------------------------------------------------------------------------------------")
 
     for skill_name in os.listdir(skills_directory):
         if skill_name not in ignored_files:
@@ -289,6 +289,7 @@ def do_list():
             config_ini = os.path.join(skill_directory, "config.ini")
             skill_json = os.path.join(skill_directory, "skill.json")
             repo = Repo(skill_directory)
+            config = None
 
             info = None
 
@@ -306,14 +307,26 @@ def do_list():
             platform = info["platform"] if info and "platform" in info else "-"
             type = info["type"] if info and "type" in info else "-"
             cfg = "y" if os.path.exists(config_ini) else "n"
+            lang = None
+
+            if os.path.exists(config_ini):
+                config = configparser.ConfigParser()
+                config.read(config_ini)
+
+                if "skill" in config and "language" in config["skill"]:
+                    lang = config["skill"]["language"]
+
+            if not lang and "language" in info:
+                if not isinstance(info["language"], list):
+                    lang = info["language"]
 
             try:
                 headcommit = repo.head.commit
                 commit = headcommit.hexsha[:7]
                 dt = datetime.datetime.utcfromtimestamp(headcommit.committed_date).strftime("%D")
 
-                print("{0: <40} {1: <13} {2: <10} {3: <15} {4: <12} {5: <1}".format(
-                    skill_name, type, version, platform, dt, cfg))
+                print("{0: <40} {1: <13} {2: <10} {3: <15} {4: <12} {5: <9} {6: <1}".format(
+                    skill_name, type, version, platform, dt, cfg, lang if lang else "en_GB (?)"))
             except Exception as e:
                 pass
 
@@ -449,6 +462,26 @@ def do_install(name, config, direct_url):
                     if val:
                         config[sect][key] = val
 
+        install_languages = info["language"] if "language" in info else None
+        install_language = None
+
+        if isinstance(install_languages, list):
+            if "skill" not in config or not "language" in config["skill"]:
+
+                while not install_language or not install_language in install_languages:
+                    install_language = input("Skill supports multiple languages. Select installation language [{}]: ".format(", ".join(install_languages)))
+
+                    if install_language and not install_language in install_languages:
+                        print("'{}' is not a valid language".format(install_language))
+
+                if not "skill" in config:
+                    config.add_section("skill")
+
+                config["skill"]["language"] = install_language
+
+                sentences_ini = os.path.join(skill_directory, "sentences.{}.ini".format(install_language).lower())
+                slots_json = os.path.join(skill_directory, "slotsdict.{}.json".format(install_language).lower())
+
         # then write back the changes to the config.ini
 
         with open(config_ini, 'w') as file:
@@ -462,7 +495,7 @@ def do_install(name, config, direct_url):
 
     if os.path.exists(slots_json):
         print("Updating slots ...")
-        update_slots(slots_json)
+        update_slots(slots_json, True if install_language else False)
 
     if os.path.exists(sentences_ini):
         print("Triggering traing ...")
@@ -1205,7 +1238,20 @@ def remove_sentences(sentences_ini_file):
 # ------------------------------------------------------------------------------
 
 
-def update_slots(slots_json):
+def update_slots(slots_json, is_dictionary = False):
+    def convert_slots(slots):
+        res = {}
+
+        for k,v in slots.items():
+            vals = []
+
+            for subk, subv in v.items():
+                vals = vals + subv
+
+            res[k] = vals
+
+        return res
+
     url = "{}/slots".format(rhasspy_url)
 
     # get existing slots from rhasspy (this one's a bit easier than sentences)
@@ -1236,6 +1282,9 @@ def update_slots(slots_json):
         except Exception as e:
             print("Invalid/malformed file '{}' ({}), cannot update slots".format(slots_json, e))
             return False
+
+    if is_dictionary:
+        new_slots = convert_slots(new_slots)
 
     # do matching
 
@@ -1271,10 +1320,10 @@ def update_slots(slots_json):
 
     print("Slots successfully updated")
 
-
 # ------------------------------------------------------------------------------
 # do_train
 # ------------------------------------------------------------------------------
+
 
 def do_train():
     url = "{}/train".format(rhasspy_url)
