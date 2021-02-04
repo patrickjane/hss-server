@@ -61,11 +61,11 @@ The server is preferably installed within a virtualenv, and requires python >=3.
 
 ## Own user (venv)
 
-It is also advised to have it run under a dedicated user. To do so, follow those steps, for a used named "hss" to be created and used:
+It is also advised to have it run under a dedicated user. To do so, follow those steps, for a user named "hss" to be created and used:
 
 ```
 pi@ceres:~ $ cd /srv
-pi@ceres:/srv $ mkdir hss
+pi@ceres:/srv $ sudo useradd -rm hss
 pi@ceres:/srv $ sudo mkdir hss
 pi@ceres:/srv $ sudo chown hss:hss hss
 pi@ceres:/srv $ sudo -u hss -H -s
