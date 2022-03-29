@@ -12,8 +12,8 @@ import logging
 import json
 import asyncio
 
-from hbmqtt.client import MQTTClient, ClientException
-from hbmqtt.mqtt.constants import QOS_0
+from amqtt.client import MQTTClient, ClientException
+from amqtt.mqtt.constants import QOS_0
 
 # -----------------------------------------------------------------------------
 # class Mqtt
