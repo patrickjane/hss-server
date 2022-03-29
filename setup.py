@@ -19,7 +19,7 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     install_requires=[
-       'hbmqtt',
+       'amqtt',
        'requests',
        'appdirs',
        'GitPython',
