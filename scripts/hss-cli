@@ -150,7 +150,7 @@ def run():
     global server_pid
 
     config = configparser.ConfigParser()
-    config_dir = args["config-dir"] if "config-dir" in args else user_config_dir("hss_server", "s710")
+    config_dir = args["configdir"] if "configdir" in args else user_config_dir("hss_server", "s710")
     hss_config_ini = os.path.join(config_dir, "config.ini") if config_dir else None
     server_pidfile = os.path.join(config_dir, "server.pid") if config_dir else None
 
